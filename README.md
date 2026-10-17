@@ -98,7 +98,18 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   Excalidraw's code is patched or disabled.
 
 ### Shapes, fills and drawing tools
-- Tools: Select, Pencil (freehand), Line, Eraser, Arrow and Text.
+- Tools: Select, Pencil (freehand), **Pen**, Line, Eraser, Arrow and Text.
+- **Pen** (`N`) is an anchor-point tool in the Photoshop sense: click to add a
+  point, drag while clicking to bend the segment into a curve through that point
+  (hold `Option` while dragging for a corner on the incoming side, hold `Shift` to
+  snap the handle to 45°), click the first point to close the path, `Enter` or a
+  double-click to finish it open, `Backspace` to step back a point and `Esc` to
+  throw the path away. It is built as an Excalidraw **custom tool**, so the engine
+  itself is untouched: the finished path is an ordinary linear element, which
+  means fills, resizing, point editing (⌘-double-click), serialization and export
+  all work exactly as they do for everything else. The path in progress is drawn
+  by the app itself and never enters the scene, so a half-drawn path cannot be
+  saved, undone or carried into another board.
 - **Native shapes** — rectangle, circle (ellipse) and diamond — use Excalidraw's
   own tools, so they drag out to any size.
 - **Generated shapes** — half circle, quarter circle, equilateral / right /
@@ -107,7 +118,9 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   points describe a closed outline (the first point is repeated at the end, which
   is also what makes Excalidraw fill them). They keep native stroke colour,
   width, fill, resizing, point editing, serialization and export, and they are
-  placed at the middle of the viewport, selected and ready to move.
+  placed at the middle of the viewport, selected and ready to move. The two-part
+  shapes (cross box, check box) are one **group**, so the glyph always moves,
+  resizes and rotates with its box.
 - **Default strokes are clean lines**: every shape and freehand stroke is written
   with Excalidraw's `roughness: 0` ("architect") and sharp corners, and the pen
   style is applied under anything a saved board carries — so a board always opens
