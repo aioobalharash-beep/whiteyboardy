@@ -870,7 +870,6 @@ export default function App() {
           tools={penTools}
           onMount={(next) => {
             setRawEditor(next);
-            diag("editor.mounted", { license: Boolean(TLDRAW_LICENSE_KEY) });
             if (import.meta.env.DEV) {
               (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
             }
