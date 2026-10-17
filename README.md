@@ -159,7 +159,8 @@ src-tauri/
 | --- | --- |
 | `core:default` | baseline app APIs |
 | `core:window:allow-start-dragging` | the `data-tauri-drag-region` title bar |
-| `dialog:default` | native `save()` dialog |
+| `dialog:default` | native `save()` and `open()` dialogs |
+| `dialog:allow-confirm` | the "are you sure you want to delete…" prompt |
 | `fs:default` | create + read the application directories |
 | `fs:allow-appdata-read-recursive` | read `boards-index.json` / `board-<id>.json` |
 | `fs:allow-appdata-write-recursive` | write and delete board files |
@@ -170,11 +171,15 @@ src-tauri/
 > `fs:allow-appdata-read-recursive` and `fs:allow-appdata-write-recursive`
 > (no hyphen in `appdata`). These are the ones used above; the Tauri CLI
 > validates every identifier at build time.
+>
+> `dialog:default` intentionally does **not** include `confirm`, so
+> `dialog:allow-confirm` is granted separately for delete confirmations.
 
-Exports can be written anywhere the user chooses. Instead of shipping a blanket
-wildcard write scope, the app asks the user for a path with the native save
-dialog and then hands that single path to the `allow_export_path` Rust command,
-which adds only that file to the file-system plugin's runtime scope
+Exports and image imports can read/write anywhere the user chooses. Instead of
+shipping a blanket wildcard scope, the app asks the user for a path with a native
+dialog and then hands that single path to a Rust command —
+`allow_export_path` for exports, `allow_import_path` for images — which adds only
+that file to the file-system plugin's runtime scope
 (`FsExt::fs_scope().allow_file(…)`).
 
 ## Licensing note
