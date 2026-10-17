@@ -106,6 +106,8 @@ export default function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const activeBoardIdRef = useRef<string | null>(null);
+  /** Board ids that still exist in the library; snapshots are never written for others. */
+  const liveBoardIdsRef = useRef<Set<string>>(new Set());
   const autosaveRef = useRef<{ flush: () => void; cancel: () => void }>({
     flush: () => {},
     cancel: () => {},
