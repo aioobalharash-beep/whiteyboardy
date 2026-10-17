@@ -431,6 +431,27 @@ export default function App() {
     return editor.store.listen(sync, { scope: "session", source: "all" });
   }, [editor]);
 
+  // --- Licence gate diagnostics -------------------------------------------
+  // tldraw hides the editor a few seconds into an unlicensed production build;
+  // record what actually happened when it does.
+  useEffect(() => {
+    const timers = [1500, TLDRAW_LICENSE_GRACE_MS + 1500].map((delay) =>
+      window.setTimeout(() => {
+        diag("license.probe", {
+          afterMs: delay,
+          missingKey: licenseKeyMissing,
+          gated: isEditorLicenseGated(),
+          canvas: document.querySelector(".tl-canvas") !== null,
+        });
+      }, delay),
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [licenseKeyMissing]);
+
+  useEffect(() => {
+    diag("license.gate", { gated: licenseGated });
+  }, [licenseGated]);
+
   // --- Keep the pen tool's segment style in sync with the dock -----------
   useEffect(() => {
     penConfig.spline = penSpline;
