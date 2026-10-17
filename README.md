@@ -19,6 +19,12 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   - `board-<id>.json` — a tldraw store snapshot per board
 - Each snapshot is produced with `getSnapshot(editor.store)` and restored with
   `loadSnapshot(editor.store, snapshot)`.
+- The file backend is **probed before it is trusted**: the app creates the app
+  data directory, writes a probe file and removes it again. If that fails — or if
+  a storage call never answers within 3 s — the library moves to `localStorage`
+  for the session and tells you with a toast instead of silently losing work.
+  If the app data directory itself cannot be created, the files move into a
+  `whiteyboardy/` sub directory of it.
 - Auto-save is debounced at **500 ms** and listens only to user document
   changes: `editor.store.listen(fn, { scope: "document", source: "user" })`.
 - **Switching a board never loses work.** The outgoing board is snapshotted
