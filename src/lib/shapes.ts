@@ -30,6 +30,8 @@ export interface ShapeOption {
   preview: string;
   /** Excalidraw's own tool for this shape; drag on the canvas to draw it. */
   tool?: "rectangle" | "ellipse" | "diamond";
+  /** Excalidraw's keyboard shortcut for that tool, shown in the dock. */
+  shortcut?: string;
   /**
    * Outline generator for shapes Excalidraw has no tool for, in a `size × size`
    * box. `strokes` are extra open lines drawn on top (cross box, check box).
