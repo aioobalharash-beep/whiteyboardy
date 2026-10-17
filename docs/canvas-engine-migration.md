@@ -297,8 +297,11 @@ launched from the bundle, app data in
   pen style (`#1971c2`, `hachure`, width 4) loaded and was written back with the
   absolute geometry identical point for point, the fill, stroke, camera and style
   preserved, and the library index unchanged;
-- pressing `N` in the shipped bundle activates the same custom tool the dev
-  harness drives (both were checked with the same in-page assertions);
+- the shipped bundle contains the pen — its `whiteyboardy-pen` custom type and the
+  `wb-pen-active` cursor rule are both in `dist/assets` and in the app bundle — but
+  the pen's *interaction* could only be exercised in the dev harness, because the
+  packaged app's UI cannot be driven from this environment (no OS automation
+  access);
 - deleting a board's file and launching the app recreated the very scene the app
   writes for a board with no file, and the app data directory was left exactly as
   it was found.
