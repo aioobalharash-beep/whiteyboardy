@@ -1,9 +1,9 @@
 import {
   CaptureUpdateAction,
   convertToExcalidrawElements,
-  type ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import {
   colorHex,
   fillBackgroundFor,

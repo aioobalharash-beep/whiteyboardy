@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Crosshair, Maximize, Minus, Plus } from "lucide-react";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 interface ZoomHudProps {
   visible: boolean;
