@@ -168,6 +168,64 @@ export function ToolDock({
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
       <div className="pointer-events-auto relative">
+        {panel === "pen" && (
+          <div className="wb-animate-in absolute bottom-full left-1/2 mb-3 w-72 -translate-x-1/2 rounded-2xl border border-neutral-200/80 bg-white/90 p-3 shadow-xl shadow-neutral-900/10 backdrop-blur-xl">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-medium tracking-wider text-neutral-400 uppercase">
+                Pen
+              </span>
+              <span className="text-[11px] text-neutral-400">Click to add points</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PEN_SPLINES.map((option) => {
+                const isActive = option.id === penSpline;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => onSelectPenSpline(option.id)}
+                    title={
+                      option.id === "line"
+                        ? "Straight segments between the points"
+                        : "Smooth curve through the points"
+                    }
+                    aria-label={`${option.label} pen path`}
+                    aria-pressed={isActive}
+                    className={`flex h-9 items-center justify-center gap-1.5 rounded-xl text-[12px] transition-colors ${
+                      isActive
+                        ? "bg-neutral-900 text-white"
+                        : "text-neutral-600 hover:bg-neutral-900/5 hover:text-neutral-900"
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      {option.id === "line" ? (
+                        <path d="M4 19 12 6l8 13" />
+                      ) : (
+                        <path d="M4 18c4-13 12-13 16 0" />
+                      )}
+                    </svg>
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <ul className="mt-3 space-y-1 text-[11px] leading-relaxed text-neutral-400">
+              <li>Click the canvas to drop anchor points.</li>
+              <li>Click the first point to close the path.</li>
+              <li>Enter or double-click finishes · ⌫ drops a point · Esc cancels.</li>
+            </ul>
+          </div>
+        )}
+
         {panel === "shapes" && (
           <div className="wb-animate-in absolute bottom-full left-1/2 mb-3 w-[262px] -translate-x-1/2 rounded-2xl border border-neutral-200/80 bg-white/90 p-3 shadow-xl shadow-neutral-900/10 backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between">
