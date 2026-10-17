@@ -9,8 +9,8 @@ const GRACE_SECONDS = Math.round(TLDRAW_LICENSE_GRACE_MS / 1000);
 interface LicenseNoticeProps {
   /** tldraw has replaced the editor with its licence gate. */
   gated: boolean;
-  /** This bundle was built without `VITE_TLDRAW_LICENSE_KEY`. */
-  missingKey: boolean;
+  /** This build will be gated five seconds after launch. */
+  willGate: boolean;
 }
 
 function openPricing() {
