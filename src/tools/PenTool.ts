@@ -143,7 +143,7 @@ class PenDrawing extends StateNode {
     const [first] = getIndices(2);
     const second = getIndexAbove(first);
 
-    this.editor.markHistoryStoppingPoint("wb-pen");
+    this.startMarkId = this.editor.markHistoryStoppingPoint("wb-pen");
     this.editor.createShape({
       id,
       type: "line",
