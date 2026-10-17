@@ -768,7 +768,7 @@ export default function App() {
       const option = findShapeOption(nextShapeId);
       if (option.tool) {
         // Excalidraw's own tools: drag on the canvas to set the size.
-        api.setActiveTool({ type: option.tool });
+        api.setActiveTool({ type: option.tool, locked: false });
         return;
       }
 
