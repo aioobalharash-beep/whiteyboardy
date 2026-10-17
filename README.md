@@ -79,7 +79,7 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   (only the licence watermark remains — see the licensing note below).
 
 ### Shapes, fills and drawing tools
-- Tools: Select, Pen (freehand), Eraser, Arrow and Text.
+- Tools: Select, Pencil (freehand), Pen (lines), Eraser, Arrow and Text.
 - **18 shapes** in the picker: rectangle, circle, equilateral triangle, diamond,
   star, pentagon, hexagon, octagon, trapezoid, rhombus, cloud, heart, cross box,
   check box — plus four shapes tldraw does not ship: **half circle, quarter
