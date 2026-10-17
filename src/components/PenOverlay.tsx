@@ -110,6 +110,7 @@ export function PenOverlay({
     <>
       <svg
         aria-hidden="true"
+        data-wb-pen-layer="true"
         className="pointer-events-none absolute inset-0 z-10 h-full w-full"
       >
         {fill && style.fillColor && (
