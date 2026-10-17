@@ -27,6 +27,7 @@ import { insertImagesFromDevice } from "./lib/insert";
 import type { BoardColorName, BoardSizeName } from "./lib/palette";
 import { findShapeOption, insertGeneratedShape } from "./lib/shapes";
 import { insertTable, tableShapeUtils } from "./shapes/TableShape";
+import { PEN_TOOL_ID, penConfig, penTools, type PenSpline } from "./tools/PenTool";
 import {
   createBoardId,
   createFolderId,
