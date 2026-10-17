@@ -137,7 +137,7 @@ export function BoardSidebar({
     if (!isDragging || draggingId === board.id) return;
     event.preventDefault();
     event.stopPropagation();
-    event.dataTransfer.dropEffect = "move";
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
     setDropTarget({ kind: "board", boardId: board.id, edge: edgeFor(event) });
   };
 
