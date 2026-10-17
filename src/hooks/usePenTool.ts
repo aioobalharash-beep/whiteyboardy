@@ -162,7 +162,7 @@ export function usePenTool({
     const onDown = (
       activeTool: ActiveTool,
       _pointerDownState: PointerDownState,
-      event: React.PointerEvent<HTMLElement>,
+      event: ReactPointerEvent<HTMLElement>,
     ) => {
       if (!activeRef.current || !isPenTool(activeTool)) return;
 
