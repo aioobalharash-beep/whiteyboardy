@@ -114,6 +114,7 @@ export default function App() {
   const [strokeColor, setStrokeColor] = useState<BoardColorName>("black");
   const [strokeSize, setStrokeSize] = useState<BoardSizeName>("m");
   const [fill, setFill] = useState<TLDefaultFillStyle>("none");
+  const [penSpline, setPenSpline] = useState<PenSpline>("line");
   const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
   const [isCropping, setIsCropping] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
