@@ -364,7 +364,13 @@ export function ToolDock({
                 key={tool.id}
                 type="button"
                 disabled={disabled}
-                onClick={() => onSelectTool(tool.id)}
+                onClick={() => {
+                  onSelectTool(tool.id);
+                  // The pen has options, so clicking it also reveals them.
+                  if (tool.id === PEN_TOOL_ID) {
+                    setPanel((open) => (open === "pen" ? "none" : "pen"));
+                  }
+                }}
                 title={`${tool.label} (${tool.shortcut})`}
                 aria-label={tool.label}
                 aria-pressed={isActive}
