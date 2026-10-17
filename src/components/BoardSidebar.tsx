@@ -258,7 +258,7 @@ export function BoardSidebar({
           <div className="flex items-center gap-0.5">
             <button
               type="button"
-              onClick={onCreateFolder}
+              onClick={() => onCreateFolder()}
               title="New folder"
               aria-label="New folder"
               className="flex h-6 w-6 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900/5 hover:text-neutral-900"
