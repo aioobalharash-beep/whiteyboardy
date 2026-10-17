@@ -440,14 +440,14 @@ export default function App() {
       window.setTimeout(() => {
         diag("license.probe", {
           afterMs: delay,
-          missingKey: licenseKeyMissing,
+          willGate: licenseWillGate,
           gated: isEditorLicenseGated(),
           canvas: document.querySelector(".tl-canvas") !== null,
         });
       }, delay),
     );
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [licenseKeyMissing]);
+  }, [licenseWillGate]);
 
   useEffect(() => {
     diag("license.gate", { gated: licenseGated });
