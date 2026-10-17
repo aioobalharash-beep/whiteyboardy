@@ -183,14 +183,20 @@ export function penElementSkeleton(
   const minX = Math.min(...points.map((point) => point.x));
   const minY = Math.min(...points.map((point) => point.y));
   const { points: local, width, height } = normalise(points);
+  // Excalidraw wants a linear element's first point at [0, 0], with x/y on that
+  // point — see `rebaseOnFirstPoint`.
+  const { x, y, points: rebased } = rebaseOnFirstPoint(local, {
+    x: minX,
+    y: minY,
+  });
 
   return {
     type: "line",
-    x: minX,
-    y: minY,
+    x,
+    y,
     width,
     height,
-    points: local.map((point) => [point.x, point.y] as [number, number]),
+    points: rebased.map((point) => [point.x, point.y] as [number, number]),
     strokeColor: style.strokeColor,
     // Only a closed path can be filled, and an open one must not hide its start.
     backgroundColor:
@@ -222,7 +228,9 @@ export function commitPenPath(
   const skeleton = penElementSkeleton(anchors, closed, style);
   if (!skeleton) return false;
 
-  const [element] = convertToExcalidrawElements([skeleton], { regenerateIds: true });
+  const [element] = convertToExcalidrawElements([skeleton], {
+    regenerateIds: true,
+  });
   if (!element) return false;
 
   api.updateScene({
