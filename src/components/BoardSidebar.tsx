@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   ChevronRight,
   Folder,
@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -25,11 +26,21 @@ interface BoardSidebarProps {
   onRenameBoard: (boardId: string, name: string) => void;
   onDeleteBoard: (boardId: string) => void;
   onMoveBoard: (boardId: string, folderId: string | null) => void;
+  onPinBoard: (boardId: string, pinned: boolean) => void;
+  /** Drops `boardId` next to `targetId`, adopting the target's folder and pin state. */
+  onReorderBoard: (boardId: string, targetId: string, edge: "before" | "after") => void;
   /** Creates a folder, optionally moving one board into it straight away. */
   onCreateFolder: (moveBoardId?: string) => void;
   onRenameFolder: (folderId: string, name: string) => void;
   onDeleteFolder: (folderId: string) => void;
 }
+
+/** What the pointer is currently hovering while a board is being dragged. */
+type DropTarget =
+  | { kind: "board"; boardId: string; edge: "before" | "after" }
+  | { kind: "folder"; folderId: string }
+  | { kind: "pinned" }
+  | { kind: "unfiled" };
 
 export function BoardSidebar({
   folders,
@@ -43,6 +54,8 @@ export function BoardSidebar({
   onRenameBoard,
   onDeleteBoard,
   onMoveBoard,
+  onPinBoard,
+  onReorderBoard,
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
@@ -52,6 +65,10 @@ export function BoardSidebar({
   const [draft, setDraft] = useState("");
   const [menuBoardId, setMenuBoardId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+
+  const isDragging = draggingId !== null;
 
   const isCollapsed = (folderId: string) => collapsed.includes(folderId);
   const toggleFolder = (folderId: string) =>
@@ -93,15 +110,96 @@ export function BoardSidebar({
     }
   };
 
+  // --- Drag and drop ------------------------------------------------------
+
+  const endDrag = () => {
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+
+  const handleDragStart = (event: DragEvent<HTMLElement>, board: BoardIndexEntry) => {
+    setDraggingId(board.id);
+    setDropTarget(null);
+    event.dataTransfer.effectAllowed = "move";
+    // Firefox refuses to start a drag unless some data is set.
+    event.dataTransfer.setData("text/plain", board.id);
+  };
+
+  /** Whether the pointer is in the top half of the hovered row. */
+  const edgeFor = (event: DragEvent<HTMLElement>): "before" | "after" => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+  };
+
+  const boardDragOver = (event: DragEvent<HTMLElement>, board: BoardIndexEntry) => {
+    if (!isDragging || draggingId === board.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget({ kind: "board", boardId: board.id, edge: edgeFor(event) });
+  };
+
+  const boardDrop = (event: DragEvent<HTMLElement>, board: BoardIndexEntry) => {
+    if (!draggingId || draggingId === board.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onReorderBoard(draggingId, board.id, edgeFor(event));
+    endDrag();
+  };
+
+  /** Highlights a container while a board is hovering it. */
+  const containerClass = (active: boolean) =>
+    active ? "bg-neutral-900/[0.06] ring-1 ring-neutral-900/15 ring-inset" : "";
+
   const canDeleteBoard = boards.length > 1;
+
+  // Pinned boards live in their own section, so folders and the unfiled list
+  // only show the boards that are not pinned.
+  const unpinnedBoards = boards.filter((board) => !board.pinned);
+  const pinnedBoards = boards.filter((board) => board.pinned);
+  // The folder badge counts every board that belongs to the folder, pinned or not.
+  const folderSize = (folderId: string) =>
+    boards.filter((board) => board.folderId === folderId).length;
+  const unfiledBoards = unpinnedBoards.filter((board) => !board.folderId);
 
   const renderBoard = (board: BoardIndexEntry, nested: boolean) => {
     const isActive = board.id === activeBoardId;
     const isRenaming = board.id === renamingBoardId;
     const menuOpen = menuBoardId === board.id;
+    const isDropBefore =
+      dropTarget?.kind === "board" &&
+      dropTarget.boardId === board.id &&
+      dropTarget.edge === "before";
+    const isDropAfter =
+      dropTarget?.kind === "board" &&
+      dropTarget.boardId === board.id &&
+      dropTarget.edge === "after";
+
+    const actionClass = `flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${
+      isActive
+        ? "text-white/70 hover:bg-white/15 hover:text-white"
+        : "text-neutral-400 hover:bg-neutral-900/5 hover:text-neutral-900"
+    }`;
 
     return (
-      <div key={board.id} className="group relative">
+      <div
+        key={board.id}
+        draggable={!isRenaming}
+        onDragStart={(event) => handleDragStart(event, board)}
+        onDragEnd={endDrag}
+        onDragOver={(event) => boardDragOver(event, board)}
+        onDrop={(event) => boardDrop(event, board)}
+        className={`group relative rounded-xl ${
+          draggingId === board.id ? "opacity-40" : ""
+        }`}
+      >
+        {isDropBefore && (
+          <span
+            className="pointer-events-none absolute inset-x-2 -top-px z-10 h-0.5 rounded-full bg-neutral-900"
+            aria-hidden
+          />
+        )}
+
         {isRenaming ? (
           <input
             autoFocus
@@ -117,10 +215,11 @@ export function BoardSidebar({
         ) : (
           <button
             type="button"
+            draggable
             onClick={() => onSelect(board.id)}
             onDoubleClick={() => beginBoardRename(board)}
-            title={`${board.name} — double-click to rename`}
-            className={`flex w-full items-center rounded-xl py-2 pr-14 text-left text-[13px] transition-colors ${
+            title={`${board.name} — double-click to rename, drag to move`}
+            className={`flex w-full items-center rounded-xl py-2 pr-20 text-left text-[13px] transition-colors ${
               nested ? "pl-6" : "pl-3"
             } ${
               isActive
@@ -135,20 +234,32 @@ export function BoardSidebar({
         {!isRenaming && (
           <div
             className={`absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-0.5 transition-opacity ${
-              menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+              menuOpen || board.pinned
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
             }`}
           >
+            <button
+              type="button"
+              onClick={() => onPinBoard(board.id, !board.pinned)}
+              title={board.pinned ? "Unpin from the top" : "Pin to the top"}
+              aria-label={board.pinned ? `Unpin ${board.name}` : `Pin ${board.name}`}
+              aria-pressed={board.pinned}
+              className={actionClass}
+            >
+              <Pin
+                className={`h-3.5 w-3.5 ${board.pinned ? "fill-current" : ""}`}
+                aria-hidden
+              />
+            </button>
+
             <button
               type="button"
               onClick={() => setMenuBoardId(menuOpen ? null : board.id)}
               title="Move to folder"
               aria-label={`Organise ${board.name}`}
               aria-expanded={menuOpen}
-              className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${
-                isActive
-                  ? "text-white/70 hover:bg-white/15 hover:text-white"
-                  : "text-neutral-400 hover:bg-neutral-900/5 hover:text-neutral-900"
-              }`}
+              className={actionClass}
             >
               <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
             </button>
@@ -222,11 +333,16 @@ export function BoardSidebar({
             )}
           </div>
         )}
+
+        {isDropAfter && (
+          <span
+            className="pointer-events-none absolute inset-x-2 -bottom-px z-10 h-0.5 rounded-full bg-neutral-900"
+            aria-hidden
+          />
+        )}
       </div>
     );
   };
-
-  const unfiledBoards = boards.filter((board) => !board.folderId);
 
   return (
     <>
@@ -278,14 +394,72 @@ export function BoardSidebar({
         </div>
 
         <nav className="wb-scroll flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
+          {(pinnedBoards.length > 0 || isDragging) && (
+            <div className="mb-1">
+              <div
+                onDragOver={(event) => {
+                  if (!isDragging) return;
+                  event.preventDefault();
+                  setDropTarget({ kind: "pinned" });
+                }}
+                onDrop={(event) => {
+                  if (!draggingId) return;
+                  event.preventDefault();
+                  onPinBoard(draggingId, true);
+                  endDrag();
+                }}
+                className={`flex items-center gap-1 rounded-xl px-1.5 py-1.5 text-[10px] font-medium tracking-wider text-neutral-400 uppercase transition-colors ${containerClass(
+                  dropTarget?.kind === "pinned",
+                )}`}
+              >
+                <Pin className="h-3 w-3 shrink-0" aria-hidden />
+                <span>Pinned</span>
+                {pinnedBoards.length > 0 ? (
+                  <span className="ml-auto pr-1 text-neutral-400">
+                    {pinnedBoards.length}
+                  </span>
+                ) : (
+                  <span className="ml-auto pr-1 text-[10px] normal-case">
+                    Drop to pin
+                  </span>
+                )}
+              </div>
+              {pinnedBoards.length > 0 && (
+                <div className="space-y-0.5">
+                  {pinnedBoards.map((board) => renderBoard(board, true))}
+                </div>
+              )}
+            </div>
+          )}
+
           {folders.map((folder) => {
-            const folderBoards = boards.filter((board) => board.folderId === folder.id);
+            const folderBoards = unpinnedBoards.filter(
+              (board) => board.folderId === folder.id,
+            );
+            const total = folderSize(folder.id);
             const folded = isCollapsed(folder.id);
             const isRenaming = folder.id === renamingFolderId;
+            const isDropZone =
+              dropTarget?.kind === "folder" && dropTarget.folderId === folder.id;
 
             return (
               <div key={folder.id} className="group/folder">
-                <div className="relative">
+                <div
+                  onDragOver={(event) => {
+                    if (!isDragging) return;
+                    event.preventDefault();
+                    setDropTarget({ kind: "folder", folderId: folder.id });
+                  }}
+                  onDrop={(event) => {
+                    if (!draggingId) return;
+                    event.preventDefault();
+                    onMoveBoard(draggingId, folder.id);
+                    endDrag();
+                  }}
+                  className={`relative rounded-xl transition-colors ${containerClass(
+                    isDropZone,
+                  )}`}
+                >
                   {isRenaming ? (
                     <input
                       autoFocus
@@ -313,7 +487,7 @@ export function BoardSidebar({
                       <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden />
                       <span className="truncate">{folder.name}</span>
                       <span className="ml-1 shrink-0 text-[10px] text-neutral-400">
-                        {folderBoards.length}
+                        {total}
                       </span>
                     </button>
                   )}
@@ -346,7 +520,7 @@ export function BoardSidebar({
                   <div className="space-y-0.5">
                     {folderBoards.length === 0 ? (
                       <p className="py-1 pr-2 pl-7 text-[11px] text-neutral-400">
-                        Empty folder
+                        {total === 0 ? "Empty folder" : "All boards pinned"}
                       </p>
                     ) : (
                       folderBoards.map((board) => renderBoard(board, true))
@@ -357,17 +531,41 @@ export function BoardSidebar({
             );
           })}
 
-          {folders.length > 0 && unfiledBoards.length > 0 && (
-            <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium tracking-wider text-neutral-400 uppercase">
-              Unfiled
-            </div>
-          )}
-
-          {unfiledBoards.map((board) => renderBoard(board, folders.length > 0))}
+          <div
+            onDragOver={(event) => {
+              if (!isDragging) return;
+              event.preventDefault();
+              setDropTarget({ kind: "unfiled" });
+            }}
+            onDrop={(event) => {
+              if (!draggingId) return;
+              event.preventDefault();
+              onMoveBoard(draggingId, null);
+              onPinBoard(draggingId, false);
+              endDrag();
+            }}
+            className={`rounded-xl transition-colors ${containerClass(
+              dropTarget?.kind === "unfiled",
+            )}`}
+          >
+            {folders.length > 0 && unfiledBoards.length > 0 && (
+              <div className="px-2 pt-2 pb-0.5 text-[10px] font-medium tracking-wider text-neutral-400 uppercase">
+                Unfiled
+              </div>
+            )}
+            {unfiledBoards.length === 0 && isDragging ? (
+              <p className="px-3 py-2 text-[11px] text-neutral-400">
+                Drop here to keep it unfiled
+              </p>
+            ) : (
+              unfiledBoards.map((board) => renderBoard(board, folders.length > 0))
+            )}
+          </div>
         </nav>
 
         <footer className="border-t border-neutral-200/70 px-4 py-3 text-[11px] text-neutral-400">
           {boards.length} {boards.length === 1 ? "board" : "boards"}
+          {pinnedBoards.length > 0 ? ` · ${pinnedBoards.length} pinned` : ""}
           {folders.length > 0
             ? ` · ${folders.length} ${folders.length === 1 ? "folder" : "folders"}`
             : ""}{" "}
