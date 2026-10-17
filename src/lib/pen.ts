@@ -155,7 +155,7 @@ export function isNearFirstAnchor(
   return Math.hypot(first.x - point.x, first.y - point.y) * zoomValue <= CLOSE_RADIUS_PX;
 }
 
-/** Snaps the direction of `to → from` to the nearest 45°, keeping its length. */
+/** Snaps the direction from `from` to `to` to the nearest 45°, keeping its length. */
 export function snapTo45(from: Point, to: Point): Point {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
