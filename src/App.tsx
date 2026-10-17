@@ -30,8 +30,8 @@ import {
   TLDRAW_LICENSE_GRACE_MS,
   TLDRAW_LICENSE_KEY,
   isEditorLicenseGated,
-  licenseKeyMissingInProduction,
   useEditorLicenseGate,
+  willEditorBeGated,
 } from "./lib/license";
 import type { BoardColorName, BoardSizeName } from "./lib/palette";
 import { findShapeOption, insertGeneratedShape } from "./lib/shapes";
