@@ -239,15 +239,26 @@ that file to the file-system plugin's runtime scope
 
 ## Licensing note
 
-tldraw v5 is free for development. Its watermark and the
-`.tl-watermark_SEE-LICENSE` element are **intentionally left visible** in this
-project — hiding them with CSS would circumvent tldraw's attribution
-requirement for unlicensed builds.
+tldraw v5 is free while you develop, but a **production** build needs a licence
+key. Without a valid one tldraw does not merely show the watermark — it replaces
+its own editor with an empty gate **five seconds after launch**
+(`LICENSE_TIMEOUT` in `@tldraw/editor`). The canvas disappears, the tools have
+nothing left to act on, and it looks exactly like a crash. Development runs are
+never gated: tldraw treats `http://localhost` (`npm run dev`, `npm run tauri dev`)
+as development.
 
-For commercial distribution, supply a tldraw licence key:
+Neither the watermark nor the `.tl-watermark_SEE-LICENSE` element is hidden with
+CSS — that would circumvent tldraw's attribution requirement.
 
-```tsx
-<Tldraw licenseKey="…" hideUi autoFocus onMount={setEditor} />
+To build for production, put a key in `.env` (never committed):
+
+```bash
+# .env
+VITE_TLDRAW_LICENSE_KEY=…
 ```
 
-The licence key removes the watermark legitimately at runtime.
+`src/lib/license.ts` reads it and passes it to `<Tldraw licenseKey={…}>`. Keys are
+available from <https://tldraw.dev/pricing>; the free 100-day trial licence keeps
+the watermark visible, and a native-app licence covers the Tauri build. If the
+key is missing or invalid, the app shows a `LicenseNotice` explaining what
+happened instead of leaving you with a blank canvas.
