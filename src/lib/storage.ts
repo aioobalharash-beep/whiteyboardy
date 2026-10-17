@@ -20,6 +20,8 @@ export interface BoardIndexEntry {
   name: string;
   /** `null` for a board that lives at the top level (not in a folder). */
   folderId: string | null;
+  /** Pinned boards are listed in their own section at the top of the sidebar. */
+  pinned: boolean;
   updatedAt: number;
 }
 
