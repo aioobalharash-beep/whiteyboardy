@@ -1,24 +1,22 @@
 use tauri_plugin_fs::FsExt;
 
-/// Allow the current session to write one exported file to the path the user
-/// just chose in the native "save" dialog.
+/// Adds one concrete file to the file-system plugin's runtime scope.
 ///
-/// The file-system plugin is deny-by-default for anything outside the app data
-/// directory. Since the path always comes from a real user interaction, we
-/// extend the runtime scope for exactly that file instead of shipping a blanket
-/// wildcard write permission.
-#[tauri::command]
-fn allow_export_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+/// The fs plugin is deny-by-default for anything outside the app data
+/// directory. Every path we extend the scope for comes from a real user
+/// interaction (a native open/save dialog), so we allow exactly that file
+/// instead of shipping a blanket wildcard write permission.
+fn extend_scope_for_file(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
     let scope = app.fs_scope();
 
     scope
-        .allow_file(&path)
+        .allow_file(path)
         .map_err(|error| format!("could not extend the fs scope for {path}: {error}"))?;
 
     // The scope check runs against the fully symlink-resolved path, so also
     // allow the canonical location when the parent directory resolves
     // elsewhere (for example `/tmp` -> `/private/tmp` on macOS).
-    let candidate = std::path::Path::new(&path);
+    let candidate = std::path::Path::new(path);
     if let (Some(parent), Some(file_name)) = (candidate.parent(), candidate.file_name()) {
         if let Ok(canonical_parent) = std::fs::canonicalize(parent) {
             let _ = scope.allow_file(canonical_parent.join(file_name));
@@ -26,6 +24,20 @@ fn allow_export_path(app: tauri::AppHandle, path: String) -> Result<(), String> 
     }
 
     Ok(())
+}
+
+/// Allow the current session to write one exported file to the path the user
+/// just chose in the native "Save" dialog.
+#[tauri::command]
+fn allow_export_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    extend_scope_for_file(&app, &path)
+}
+
+/// Allow the current session to read one image the user just chose in the
+/// native "Open" dialog, so it can be added to the board.
+#[tauri::command]
+fn allow_import_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    extend_scope_for_file(&app, &path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
