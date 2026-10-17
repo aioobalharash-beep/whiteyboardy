@@ -838,11 +838,13 @@ export default function App() {
         color={strokeColor}
         size={strokeSize}
         fill={fill}
+        penSpline={penSpline}
         onSelectTool={handleSelectTool}
         onSelectShape={handleSelectShape}
         onSelectColor={handleSelectColor}
         onSelectSize={handleSelectSize}
         onSelectFill={handleSelectFill}
+        onSelectPenSpline={handleSelectPenSpline}
         onInsertImage={handleInsertImage}
         onInsertTable={handleInsertTable}
         onToggle={() => setZenMode((zen) => !zen)}
