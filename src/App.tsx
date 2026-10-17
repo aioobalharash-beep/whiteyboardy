@@ -873,7 +873,7 @@ export default function App() {
           }}
         />
 
-        <LicenseNotice gated={licenseGated} willGate={true} />
+        <LicenseNotice gated={true} willGate={true} />
       </main>
 
       <ExportBar
