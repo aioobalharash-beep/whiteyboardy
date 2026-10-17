@@ -229,8 +229,7 @@ class PenDrawing extends StateNode {
     const cleaned = this.dedupe(this.anchors);
     if (cleaned.length < 2) {
       // A single click is not a path yet; leave nothing behind.
-      this.editor.deleteShapes([shapeId]);
-      this.reset();
+      this.discard();
       return;
     }
 
@@ -242,6 +241,11 @@ class PenDrawing extends StateNode {
       type: "line",
       props: { spline: penConfig.spline },
     });
+
+    // Fold every anchor and rubber-band change into one undo step, so a single
+    // undo takes the whole path back instead of nibbling off one point.
+    const markId = this.startMarkId;
+    if (markId) this.editor.squashToMark(markId);
     this.editor.markHistoryStoppingPoint("wb-pen");
     this.reset();
 
@@ -249,11 +253,21 @@ class PenDrawing extends StateNode {
     if (exit) this.editor.setCurrentTool("select");
   }
 
+  /**
+   * Throws the whole draft away, including its history entry, so an abandoned
+   * path never turns into an undo step.
+   */
   private discard() {
-    if (this.shapeId && this.editor.getShape(this.shapeId)) {
-      this.editor.deleteShapes([this.shapeId]);
-    }
+    const shapeId = this.shapeId;
+    const markId = this.startMarkId;
     this.reset();
+
+    if (markId) this.editor.bailToMark(markId);
+    // `bailToMark` does nothing when the mark has gone (for example the user
+    // undid past it), so make sure the shape really is gone.
+    if (shapeId && this.editor.getShape(shapeId)) {
+      this.editor.deleteShapes([shapeId]);
+    }
   }
 
   private reset() {
@@ -262,6 +276,7 @@ class PenDrawing extends StateNode {
     this.anchors = [];
     this.pending = null;
     this.hoveringStart = false;
+    this.startMarkId = null;
   }
 
   // --- Helpers ------------------------------------------------------------
