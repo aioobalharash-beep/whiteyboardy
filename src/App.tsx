@@ -223,6 +223,8 @@ export default function App() {
   const writeBoardSnapshot = useCallback(
     async (boardId: string) => {
       if (!editor) return;
+      // Never resurrect a board the user has already deleted.
+      if (!liveBoardIdsRef.current.has(boardId)) return;
 
       let snapshot: BoardSnapshot;
       try {
@@ -234,6 +236,12 @@ export default function App() {
 
       try {
         await saveBoardSnapshot(boardId, snapshot);
+        if (!liveBoardIdsRef.current.has(boardId)) {
+          // The board was deleted while this write was in flight, so clean up the
+          // file we just recreated instead of leaving it orphaned on disk.
+          await deleteBoardSnapshot(boardId).catch(() => {});
+          return;
+        }
         setBoards((previous) =>
           previous.map((board) =>
             board.id === boardId ? { ...board, updatedAt: Date.now() } : board,
