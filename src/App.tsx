@@ -261,7 +261,6 @@ export default function App() {
 
     void storageStatus().then((report) => {
       if (cancelled) return;
-      diag("storage.report", report);
       if (report.backend === "files" || !isTauriRuntime()) return;
       showNotice({
         kind: "error",
