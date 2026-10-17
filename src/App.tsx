@@ -670,6 +670,25 @@ export default function App() {
     [editor],
   );
 
+  const handleSelectPenSpline = useCallback(
+    (spline: PenSpline) => {
+      setPenSpline(spline);
+      penConfig.spline = spline;
+      if (!editor) return;
+
+      // Retune any selected paths so the choice is visible straight away.
+      const selectedLines = editor
+        .getSelectedShapeIds()
+        .filter((shapeId) => editor.getShape(shapeId)?.type === "line");
+      if (selectedLines.length > 0) {
+        editor.updateShapes(
+          selectedLines.map((shapeId) => ({ id: shapeId, type: "line" as const, props: { spline } })),
+        );
+      }
+    },
+    [editor],
+  );
+
   // --- Insert image / table ----------------------------------------------
   const handleInsertImage = useCallback(async () => {
     if (!editor) return;
