@@ -47,21 +47,19 @@ export interface BoardLibrary {
  *     ├── board-<id>.json
  *     └── …
  *
- * When the app runs in a plain browser (`vite dev` preview) — or when the app
- * data directory turns out to be unusable at runtime — the same data is kept in
+ * Rust creates that directory at startup (`create_dir_all`); the webview's `fs`
+ * plugin cannot, because `mkdir(".")` resolves to a path with a trailing `.`
+ * component that `create_dir_all` handles incorrectly.
+ *
+ * When the app runs in a plain browser (`npm run dev`) — or when the app data
+ * directory turns out to be unusable at runtime — the same data is kept in
  * `localStorage` instead, so the board library is never lost.
  */
 const APP_DATA_DIR = BaseDirectory.AppData;
 const INDEX_FILE_NAME = "boards-index.json";
 const INDEX_STORAGE_KEY = "whiteyboardy.boards-index";
 
-/**
- * If the app data directory itself cannot be created (a locked-down fs scope,
- * for example), the files move into this sub directory, which is always inside
- * the granted `$APPDATA/**` scope.
- */
-const FALLBACK_DIR_NAME = "whiteyboardy";
-/** Written once to prove that the file backend really can write before we use it. */
+/** Written once and removed again to prove the file backend can really write. */
 const PROBE_FILE_NAME = "whiteyboardy-storage-probe.json";
 /**
  * A storage call that never settles would hang the whole library load, so every
@@ -81,8 +79,6 @@ export type StorageBackend = "files" | "browser";
 /** The outcome of choosing a storage backend, for the UI to report. */
 export interface StorageReport {
   backend: StorageBackend;
-  /** `""` for the app data directory itself, otherwise a sub directory of it. */
-  directory: string;
   /** Why the file backend was rejected, if it was. */
   error: string | null;
 }
@@ -120,63 +116,41 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   });
 }
 
-/** Prefixes a file name with the active storage directory. */
-function filePath(fileName: string): string {
-  return activeDirectory === "" ? fileName : `${activeDirectory}/${fileName}`;
-}
-
-let activeDirectory = "";
 let storageReport: StorageReport | null = null;
 let storageReportPromise: Promise<StorageReport> | null = null;
 
 /**
- * Creates the app data directory and proves that it can be written to.
+ * Proves that the app data directory can be written to.
  *
- * The app data directory is not created for us by Tauri, and no storage
- * permission check is trustworthy until a real byte has landed on disk, so this
- * writes (and removes) a probe file. If anything fails — or simply never
- * answers — the caller falls back to `localStorage`.
+ * No storage permission check is trustworthy until a real byte has landed on
+ * disk, so this writes (and removes) a probe file. If that fails — or simply
+ * never answers — the caller falls back to `localStorage`.
  */
 async function probeFileBackend(): Promise<StorageReport> {
-  const candidates = ["", FALLBACK_DIR_NAME];
-  let error: string | null = null;
-
-  for (const directory of candidates) {
-    const base = directory === "" ? "." : directory;
-    const probe = directory === "" ? PROBE_FILE_NAME : `${directory}/${PROBE_FILE_NAME}`;
-
-    try {
-      await withTimeout(
-        mkdir(base, { baseDir: APP_DATA_DIR, recursive: true }),
-        `mkdir(${base})`,
-      );
-      await withTimeout(
-        writeTextFile(probe, "ok", { baseDir: APP_DATA_DIR }),
-        `writeTextFile(${probe})`,
-      );
-      await remove(probe, { baseDir: APP_DATA_DIR }).catch(() => {});
-      diag("storage.files-ok", { directory, base });
-      return { backend: "files", directory, error: null };
-    } catch (caught) {
-      error = `${base}: ${describeError(caught)}`;
-      diag("storage.files-failed", error);
-    }
+  try {
+    await withTimeout(
+      writeTextFile(PROBE_FILE_NAME, "ok", { baseDir: APP_DATA_DIR }),
+      `writeTextFile(${PROBE_FILE_NAME})`,
+    );
+    await remove(PROBE_FILE_NAME, { baseDir: APP_DATA_DIR }).catch(() => {});
+    diag("storage.files-ok");
+    return { backend: "files", error: null };
+  } catch (caught) {
+    const error = describeError(caught);
+    diag("storage.files-failed", error);
+    return { backend: "browser", error };
   }
-
-  diag("storage.fallback-to-browser", error);
-  return { backend: "browser", directory: "", error };
 }
 
 /** Resolves (once) which backend this session writes to, and remembers it. */
 function resolveStorage(): Promise<StorageReport> {
   if (!isTauriRuntime()) {
-    storageReport ??= { backend: "browser", directory: "", error: null };
+    storageReport ??= { backend: "browser", error: null };
     return Promise.resolve(storageReport);
   }
 
   storageReportPromise ??= probeFileBackend().then((report) => {
     storageReport = report;
-    activeDirectory = report.directory;
     return report;
   });
 
