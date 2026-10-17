@@ -49,6 +49,19 @@ const AUTOSAVE_DELAY_MS = 500;
 /** Debounce window for writing the board library to disk. */
 const INDEX_SAVE_DELAY_MS = 300;
 
+/**
+ * Single-key shortcuts for the tools in the dock. tldraw's own shortcuts are
+ * bound by its UI, which this app hides, so we route them ourselves.
+ */
+const TOOL_SHORTCUTS: Record<string, string> = {
+  v: "select",
+  d: "draw",
+  p: PEN_TOOL_ID,
+  e: "eraser",
+  a: "arrow",
+  t: "text",
+};
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
