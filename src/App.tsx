@@ -15,10 +15,12 @@ import type { ImportedDataState } from "@excalidraw/excalidraw/data/types";
 import { BoardSidebar } from "./components/BoardSidebar";
 import { CropOverlay, type ScreenRect } from "./components/CropOverlay";
 import { ExportBar } from "./components/ExportBar";
+import { PenOverlay } from "./components/PenOverlay";
 import { Toast, type Notice } from "./components/Toast";
 import { ToolDock, type DockToolId } from "./components/ToolDock";
 import { ZoomHud } from "./components/ZoomHud";
 import { EmptyBoardError, exportBoard, type ExportFormat } from "./lib/export";
+import { usePenTool } from "./hooks/usePenTool";
 import { insertImagesFromDevice } from "./lib/insert";
 import { PEN_CUSTOM_TYPE, type PenStyle } from "./lib/pen";
 import {
