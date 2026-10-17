@@ -170,16 +170,117 @@ copied to `…legacy-tldraw` before its file is replaced.
   was blank at 5 s in exactly this environment; nothing in this build is time- or
   licence-dependent.
 
-### Still owed by Phase 2
+---
 
-1. **Pen tool** (anchor points, straight/smooth, point editing) as an Excalidraw
-   custom tool (`{ type: "custom", customType }` + `onPointerDown`/`onPointerUp`).
-   Excalidraw's own **Line** tool is in the dock as the interim.
-2. **Tables** — composed from grouped rectangles plus container-bound text, with
-   the add/remove row/col controls.
-3. **Remaining shape work**: richer cloud/x-box/check-box compositions if wanted.
-4. **Section-export polish** — the crop is currently a raster crop of a 2× board
+## Status after Phase 2 (pen tool + grouped shapes)
+
+**The pen.** Phase 2's first item was a pen tool that is genuinely different from
+the pencil: anchor points, curves and closable paths, rather than a freehand
+stroke. Excalidraw has no path element, no bezier storage and no custom element
+types, so the pen is built out of the two hooks the engine does offer — the
+`{ type: "custom", customType }` tool and the imperative pointer subscriptions —
+and its geometry is *sampled* into an ordinary `line` element.
+
+What the engine does and does not give a custom tool (all read out of the
+published 0.18.1 build):
+
+- `api.onPointerDown` / `onPointerUp` fire for **every** tool and, unlike the
+  `<Excalidraw onPointerDown>` props, they pass the native event, so the pen
+  filters on `activeTool.type === "custom" && customType` and converts with
+  `viewportCoordsToSceneCoords(event, appState)`.
+- For a custom tool the engine's pointer-down does nothing but reset the cursor,
+  and `handleCanvasDoubleClick` bails unless the tool is `selection` — so nothing
+  fights the pen for the gesture.
+- Space-drag and middle-drag panning return *before* the emitter fires, so
+  panning can never place a phantom anchor.
+- **An unlocked custom tool is handed back to `selection` after every pointer
+  up**, which breaks a click-by-click tool. The pen therefore activates with
+  `locked: true` (Excalidraw's own "keep this tool" flag), and every other tool
+  is activated with `locked: false` so the flag cannot leak onto them.
+- Custom tools get **no cursor** (`setCursorForShape` resets the canvas to
+  `auto` on every pointer move), so the pen's crosshair comes from one CSS rule
+  scoped to `.wb-canvas.wb-pen-active` rather than fighting the engine per event.
+- A custom type is not part of Excalidraw's `ToolType`, so the dock's
+  `DockToolId` gained `"pen"` and `syncDock` maps the engine's active tool back
+  to it.
+
+The interaction: click to place an anchor; drag while placing one to bend the
+segment through it (symmetric handles, or `Option` to break the incoming side
+into a corner, `Shift` to snap a handle to 45°); click the first anchor to close
+the path (a drag there curves the join); `Enter` or a double-click to finish it
+open; `Backspace` to step back an anchor; `Esc` to throw the path away. A second
+`Esc` on an empty path falls through to the engine, which hands the canvas back
+to the selection tool — the same thing `Esc` does for Excalidraw's own tools.
+Leaving the pen with a path in progress commits it open rather than losing it
+(the way switching tools commits a work path), and switching **board** drops it,
+because a half-drawn path belongs to the board it was started on.
+
+The work in progress deliberately lives *outside* the scene: anchors, handles and
+the rubber band are painted by the app in an SVG layer (`PenOverlay.tsx`) whose
+coordinates go through the board camera (kept fresh with `api.onScrollChange`).
+Nothing in progress can therefore be autosaved, land on the undo stack, or be
+carried into another board, and the finished element is an ordinary linear
+element, so stroke colour and width, fills (including hatched and cross-hatched),
+resizing, `⌘`-double-click point editing, serialization, export and undo all
+behave exactly as they do for the generated shapes.
+
+**Grouped two-part shapes.** The cross box and check box are an outline plus a
+glyph; they now share one Excalidraw `groupIds` entry, so the glyph can no longer
+be left behind when the shape is moved, resized or rotated.
+
+**Verified in the dev harness** (browser preview, `localStorage` backend,
+synthetic pointer and real key input against the live engine):
+
+- the pen activates from the dock button *and* from the new `N` shortcut, the dock
+  highlights it, the canvas host gains `.wb-pen-active` and the computed cursor on
+  the interactive canvas is `crosshair`;
+- three clicks in three separate gestures placed three anchors: the overlay showed
+  three anchor squares plus the dashed rubber band, the scene stayed empty, and the
+  board file on disk was still empty 900 ms later — well past the 500 ms autosave
+  debounce, so a pending path is never persisted;
+- the rubber band follows the pointer, and with `Shift` a raw direction of
+  (200, 40) snapped to a horizontal endpoint of the same length;
+- dragging while placing an anchor produced symmetric handles (two handle lines,
+  two dots) and the segment between the anchors was a sampled cubic (44 points for
+  that span); `Option`-dragging produced a single outgoing handle (one line, one
+  dot), i.e. a corner on the incoming side;
+- `Enter` committed an open path: a `line` element of 3 points whose bounding box
+  matched the clicked scene points exactly, `roughness: 0`, `roundness: null`, the
+  dock's stroke colour and width, `backgroundColor: "transparent"`;
+- clicking the first anchor closed the path: 130 points with the first point
+  repeated at the end (which is what `isPathALoop` needs), the dock's fill
+  (`#e03131`, solid) applied through the style the dock had synced from the
+  engine, and 22,897 red pixels read back out of the static canvas — the fill
+  really paints;
+- `Esc` discarded the draft (overlay gone, scene still empty, pen still active);
+  `Backspace` stepped back one anchor (3 → 2); a double-click (`detail === 2`)
+  finished an open path as a 2-point element with no fill;
+- switching tool mid-path with a real `V` keypress committed the open path and
+  left the selection tool active; switching *board* mid-path committed nothing
+  anywhere (the old board kept exactly its one element, the new board was empty,
+  and the overlay was clear);
+- at zoom 1.5 with `scrollX 100` / `scrollY 60` and a 256 px sidebar, a click at
+  client (700, 400) committed at scene (196, 207) — the bounding box starts exactly
+  there — and zooming mid-path doubled the overlay's coordinates exactly;
+- after a reload the committed closed path came back with an identical bounding
+  box, the same 94 points, fill, stroke colour and width;
+- the check box placed two elements sharing one group id (both selected), and the
+  tool returned to selection with `locked: false`;
+- `⌘`-double-clicking a pen path entered Excalidraw's own point editing
+  (`editingLinearElement.elementId` matched), so pen output stays fully editable;
+- no console errors or warnings over the whole session.
+
+### Still owed
+
+1. **Tables** — composed from grouped rectangles plus container-bound text, with
+   add/remove row/column controls (Excalidraw has no table element).
+2. **Remaining shape work**: richer cloud variants, and any further composition
+   polish for the cross/check boxes.
+3. **Section-export polish** — the crop is currently a raster crop of a 2× board
    export (exact, but the region's background outside the board relies on
    `exportBackground`).
-5. Optional: flush pending autosaves on window close (today up to ~500 ms of edits
+4. Optional: flush pending autosaves on window close (today up to ~500 ms of edits
    can be lost if the process is killed mid-debounce).
+5. Not machine-verifiable by the assistant: the native macOS image-open and
+   save-confirm dialogs need a human at the keyboard (OS automation is unavailable
+   in this environment).
