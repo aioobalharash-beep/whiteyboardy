@@ -30,8 +30,9 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   browser) and removes the board's snapshot file.
 - Snapshots are never written for a board that no longer exists, so an in-flight
   autosave can't resurrect a deleted board's file.
-- Older `boards-index.json` files (v1: a bare array of boards) are migrated
-  automatically; unknown folder references are dropped.
+- Older `boards-index.json` files are migrated automatically: v1 (a bare array of
+  boards) gains the folder wrapper, and v2 entries gain `pinned: false`. Unknown
+  folder references are dropped.
 - When running in a plain browser (`npm run dev`), storage transparently falls
   back to `localStorage` so the whole UI keeps working.
 
