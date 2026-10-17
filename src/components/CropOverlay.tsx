@@ -16,8 +16,8 @@ const MIN_DRAG = 8;
 
 /**
  * Full-screen marquee used for section exports. It only reports screen-space
- * coordinates; the caller converts them to page space with
- * `editor.screenToPage()`.
+ * coordinates; the caller converts them to scene space with
+ * `viewportCoordsToSceneCoords()`.
  */
 export function CropOverlay({ onComplete }: CropOverlayProps) {
   const [rect, setRect] = useState<ScreenRect | null>(null);

@@ -2,21 +2,37 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { jsPDF } from "jspdf";
-import type { Box, Editor } from "tldraw";
+import {
+  convertToExcalidrawElements,
+  exportToBlob,
+  getCommonBounds,
+} from "@excalidraw/excalidraw";
+import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { isTauriRuntime } from "./storage";
 
 export type ExportFormat = "png" | "pdf";
 
+/** A rectangle in scene coordinates. */
+export interface SceneRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ExportRequest {
-  editor: Editor;
+  elements: readonly ExcalidrawElement[];
+  files: BinaryFiles;
+  appState: AppState;
   format: ExportFormat;
   /** Used for the default file name offered by the native save dialog. */
   boardName: string;
   /**
-   * Page-space region to export. When omitted the union bounding box of every
-   * shape on the current page is exported instead.
+   * Scene-space region to export. When omitted, the union bounding box of every
+   * element on the board is exported instead.
    */
-  bounds?: Box;
+  region?: SceneRegion;
 }
 
 export type ExportOutcome =
@@ -24,18 +40,17 @@ export type ExportOutcome =
   | { status: "downloaded"; fileName: string }
   | { status: "cancelled" };
 
-/** Thrown when the current page has no shapes to rasterize. */
+/** Thrown when the current board has nothing to rasterize. */
 export class EmptyBoardError extends Error {
   constructor() {
-    super("There is nothing on this page to export yet.");
+    super("There is nothing on this board to export yet.");
     this.name = "EmptyBoardError";
   }
 }
 
 /**
- * `scale: 2` gives us a Retina @2x logical raster; tldraw additionally applies
- * its default device `pixelRatio` for bitmap formats, so exports come out very
- * crisp and scale down cleanly into slides and documents.
+ * `EXPORT_SCALE: 2` renders the scene into a Retina-sized raster, so exports
+ * stay crisp when they are scaled down into slides and documents.
  */
 const EXPORT_SCALE = 2;
 const EXPORT_PADDING = 32;
@@ -86,6 +101,63 @@ async function createPdf(
   return new Uint8Array(buffer);
 }
 
+/** Decodes a PNG blob so its pixel size and contents can be read. */
+function loadImage(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read the exported image."));
+    };
+    image.src = url;
+  });
+}
+
+/**
+ * Cuts a sub-rectangle out of a PNG.
+ *
+ * Excalidraw always exports the bounds of the elements it is given, so a
+ * section export is produced by exporting the whole board and then cropping the
+ * raster to the region the user dragged.
+ */
+async function cropImage(
+  image: HTMLImageElement,
+  source: { x: number; y: number; width: number; height: number },
+): Promise<{ blob: Blob; width: number; height: number }> {
+  const width = Math.max(1, Math.round(source.width));
+  const height = Math.max(1, Math.round(source.height));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not prepare the exported image.");
+
+  context.drawImage(
+    image,
+    Math.round(source.x),
+    Math.round(source.y),
+    width,
+    height,
+    0,
+    0,
+    width,
+    height,
+  );
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/png"),
+  );
+  if (!blob) throw new Error("Could not crop the exported image.");
+  return { blob, width, height };
+}
+
 /**
  * The fs plugin is deny-by-default outside of the app data directory. The path
  * the user just picked in the native save dialog is handed to a tiny Rust
@@ -112,36 +184,101 @@ function downloadInBrowser(blob: Blob, fileName: string): void {
 }
 
 /**
- * Rasterizes the board (or a page-space region of it) and writes it out as a
+ * Rasterizes the board (or a scene-space region of it) and writes it out as a
  * PNG or PDF, either through the native save dialog or a browser download.
  */
 export async function exportBoard({
-  editor,
+  elements,
+  files,
+  appState,
   format,
   boardName,
-  bounds,
+  region,
 }: ExportRequest): Promise<ExportOutcome> {
-  const shapeIds = [...editor.getCurrentPageShapeIds()];
-  if (shapeIds.length === 0) throw new EmptyBoardError();
+  const visible = elements.filter((element) => !element.isDeleted);
+  if (visible.length === 0) throw new EmptyBoardError();
 
-  const { blob, width, height } = await editor.toImage(shapeIds, {
-    format: "png",
-    scale: EXPORT_SCALE,
-    background: true,
-    padding: EXPORT_PADDING,
-    ...(bounds ? { bounds } : {}),
+  const [minX, minY, maxX, maxY] = getCommonBounds(visible);
+
+  /*
+   * An invisible rectangle stretches the exported bounds out to the requested
+   * region, so a section can include the empty space around — or outside — the
+   * board. `exportBackground` then paints that space with the board's colour.
+   */
+  const regionElements = region
+    ? convertToExcalidrawElements(
+        [
+          {
+            type: "rectangle",
+            x: region.x,
+            y: region.y,
+            width: Math.max(1, region.width),
+            height: Math.max(1, region.height),
+            opacity: 0,
+          },
+        ],
+        { regenerateIds: true },
+      )
+    : [];
+
+  const unionMinX = region ? Math.min(minX, region.x) : minX;
+  const unionMinY = region ? Math.min(minY, region.y) : minY;
+  const unionMaxX = region ? Math.max(maxX, region.x + region.width) : maxX;
+  const unionMaxY = region ? Math.max(maxY, region.y + region.height) : maxY;
+  const paddedWidth = unionMaxX - unionMinX + EXPORT_PADDING * 2;
+  const paddedHeight = unionMaxY - unionMinY + EXPORT_PADDING * 2;
+
+  const rendered = await exportToBlob({
+    elements: [...visible, ...regionElements],
+    appState: {
+      ...appState,
+      exportBackground: true,
+      viewBackgroundColor: "#ffffff",
+      exportScale: EXPORT_SCALE,
+    },
+    files,
+    mimeType: "image/png",
+    exportPadding: EXPORT_PADDING,
+    getDimensions: (width: number, height: number) => ({
+      width: width * EXPORT_SCALE,
+      height: height * EXPORT_SCALE,
+      scale: EXPORT_SCALE,
+    }),
   });
+
+  let output = rendered;
+  let outputWidth = paddedWidth * EXPORT_SCALE;
+  let outputHeight = paddedHeight * EXPORT_SCALE;
+
+  if (region) {
+    const image = await loadImage(rendered);
+    // Derived from the real raster rather than assumed, so the crop stays exact
+    // whatever scale Excalidraw ended up rendering at.
+    const pixelScale = image.naturalWidth / paddedWidth;
+    const crop = {
+      x: (region.x - unionMinX + EXPORT_PADDING) * pixelScale,
+      y: (region.y - unionMinY + EXPORT_PADDING) * pixelScale,
+      width: region.width * pixelScale,
+      height: region.height * pixelScale,
+    };
+    const cropped = await cropImage(image, crop);
+    output = cropped.blob;
+    outputWidth = cropped.width;
+    outputHeight = cropped.height;
+  }
 
   const baseName = sanitizeFileName(boardName);
   const fileName = `${baseName}.${format}`;
 
   // Browser dev preview: no filesystem, so fall back to a download.
   if (!isTauriRuntime()) {
-    const output =
+    const download =
       format === "png"
-        ? blob
-        : new Blob([await createPdf(blob, width, height)], { type: "application/pdf" });
-    downloadInBrowser(output, fileName);
+        ? output
+        : new Blob([await createPdf(output, outputWidth, outputHeight)], {
+            type: "application/pdf",
+          });
+    downloadInBrowser(download, fileName);
     return { status: "downloaded", fileName };
   }
 
@@ -160,9 +297,9 @@ export async function exportBoard({
   await allowExportPath(filePath);
 
   if (format === "png") {
-    await writeFile(filePath, new Uint8Array(await blob.arrayBuffer()));
+    await writeFile(filePath, new Uint8Array(await output.arrayBuffer()));
   } else {
-    await writeFile(filePath, await createPdf(blob, width, height));
+    await writeFile(filePath, await createPdf(output, outputWidth, outputHeight));
   }
 
   return {

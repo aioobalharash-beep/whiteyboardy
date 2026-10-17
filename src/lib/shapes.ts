@@ -1,231 +1,422 @@
 import {
-  compressLegacySegments,
-  createShapeId,
-  type Editor,
-  type TLDefaultColorStyle,
-  type TLDefaultFillStyle,
-  type TLDefaultSizeStyle,
-  type TLGeoShapeGeoStyle,
-  type VecModel,
-} from "tldraw";
+  CaptureUpdateAction,
+  convertToExcalidrawElements,
+} from "@excalidraw/excalidraw";
+import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import {
+  colorHex,
+  fillBackgroundFor,
+  strokeWidthFor,
+  type BoardColorName,
+  type BoardFillName,
+  type BoardSizeName,
+} from "./palette";
+import { createId } from "./storage";
 
 /**
  * The shapes offered in the tool dock.
  *
- * tldraw ships a rich set of built-in "geo" shapes, but it has no half circle,
- * quarter circle, right triangle or obtuse triangle. Those are generated here as
- * closed tldraw **draw** shapes, which keeps tldraw's native stroke, dash,
- * colour *and fill* rendering (including pattern fills) as well as resize and
- * serialization for free.
+ * Excalidraw ships three closed shape tools — rectangle, ellipse and diamond —
+ * plus lines. Everything else the dock offers (half circle, quarter circle, the
+ * triangles, star, cloud, …) is generated here as a **closed linear element**
+ * whose points describe the outline. Excalidraw fills a linear element when its
+ * first and last points meet (`isPathALoop`), so these shapes keep the native
+ * stroke colour, width, fill and serialization, exactly like the built-ins.
  */
 export interface ShapeOption {
   id: string;
   label: string;
   /** A preview path drawn in a 24×24 viewBox. */
   preview: string;
-  /** Built-in tldraw geo style, drawn by tldraw's own GeoShapeUtil. */
-  geo?: TLGeoShapeGeoStyle;
-  /** Point generator for shapes tldraw does not ship (closed draw shapes). */
-  buildPoints?: (size: number) => VecModel[];
-  /** Whether picking this shape places it immediately instead of arming a tool. */
-  clickToPlace?: boolean;
+  /** Excalidraw's own tool for this shape; drag on the canvas to draw it. */
+  tool?: "rectangle" | "ellipse" | "diamond";
+  /** Excalidraw's keyboard shortcut for that tool, shown in the dock. */
+  shortcut?: string;
+  /**
+   * Outline generator for shapes Excalidraw has no tool for, in a `size × size`
+   * box. `strokes` are extra open lines drawn on top (cross box, check box).
+   */
+  draw?: (size: number) => { outline: Point[]; strokes?: Point[][] };
 }
 
-const arc = (
+/** A point in a shape's own coordinate space; y grows downwards. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+const TAU = Math.PI * 2;
+
+function arc(
   from: number,
   to: number,
   steps: number,
-  map: (angle: number) => VecModel,
-): VecModel[] => {
-  const points: VecModel[] = [];
-  for (let i = 0; i <= steps; i++) {
-    points.push(map(from + ((to - from) * i) / steps));
+  map: (angle: number) => Point,
+): Point[] {
+  const points: Point[] = [];
+  for (let index = 0; index <= steps; index++) {
+    points.push(map(from + ((to - from) * index) / steps));
   }
   return points;
-};
+}
 
-const TWO_PI = Math.PI * 2;
+/**
+ * Repeats the first point at the end.
+ *
+ * Excalidraw only paints a linear element's background when its ends meet, and
+ * the closing segment is what draws the shape's straight edge.
+ */
+function closeLoop(points: Point[]): Point[] {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first.x === last.x && first.y === last.y) return points;
+  return [...points, { ...first }];
+}
 
-/** A flat-bottomed semicircle that fills a box that is `size` wide, `size/2` tall. */
-function halfCirclePoints(size: number): VecModel[] {
+function boundsOf(points: Point[]): { width: number; height: number } {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/** Scales a point cloud so its longest side is `size`, keeping its aspect. */
+function fitToSize(points: Point[], size: number): Point[] {
+  const { width, height } = boundsOf(points);
+  const scale = size / Math.max(width, height);
+  return points.map((point) => ({ x: point.x * scale, y: point.y * scale }));
+}
+
+/** Shifts a point cloud so its bounding box starts at the origin. */
+export function normalise(points: Point[]): {
+  points: Point[];
+  width: number;
+  height: number;
+} {
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const shifted = points.map((point) => ({ x: point.x - minX, y: point.y - minY }));
+  const { width, height } = boundsOf(shifted);
+  return { points: shifted, width, height };
+}
+
+/**
+ * Moves a point cloud's origin onto its **first** point.
+ *
+ * Excalidraw requires a linear element's points to start at `[0, 0]`, with the
+ * element's `x`/`y` sitting on that first point: its point editor logs an error
+ * for elements that do not, and re-writes them in that form the next time the
+ * board is loaded. Every shape — generated or drawn with the pen — is written
+ * already normalised so what is on screen is what the engine expects.
+ *
+ * `origin` is the top-left of the element's bounding box on the board.
+ */
+export function rebaseOnFirstPoint(
+  points: Point[],
+  origin: Point,
+): { x: number; y: number; points: Point[] } {
+  const first = points[0] ?? { x: 0, y: 0 };
+  return {
+    x: origin.x + first.x,
+    y: origin.y + first.y,
+    points: points.map((point) => ({
+      x: point.x - first.x,
+      y: point.y - first.y,
+    })),
+  };
+}
+
+/** A flat-bottomed semicircle that fills a box `size` wide and `size/2` tall. */
+function halfCircle(size: number): Point[] {
   const radius = size / 2;
-  return arc(Math.PI, TWO_PI, 48, (angle) => ({
+  return arc(Math.PI, TAU, 48, (angle) => ({
     x: radius + radius * Math.cos(angle),
     y: radius + radius * Math.sin(angle),
   }));
 }
 
-/** A pie-slice quarter circle that fills a `size × size` box. */
-function quarterCirclePoints(size: number): VecModel[] {
-  const points = arc(0, -Math.PI / 2, 40, (angle) => ({
-    x: size * Math.cos(angle),
-    y: size + size * Math.sin(angle),
-  }));
-  // Close the pie through the arc's centre.
-  points.push({ x: 0, y: size });
-  return points;
+/** A pie slice: the arc from 3 o'clock to 12 o'clock plus the corner. */
+function quarterCircle(size: number): Point[] {
+  return [
+    ...arc(0, -Math.PI / 2, 40, (angle) => ({
+      x: size * Math.cos(angle),
+      y: size + size * Math.sin(angle),
+    })),
+    { x: 0, y: size },
+  ];
 }
 
-/**
- * Samples a polygon's perimeter at a fixed spacing.
- *
- * A draw shape's points are rendered through tldraw's freehand smoothing, which
- * blends each point with the running average of the previous ones. That filter
- * works per point, not per unit of distance, so a handful of far-apart vertices
- * gets rounded away entirely. Walking the perimeter with points a few pixels
- * apart keeps convex corners crisp while still rendering as a smooth stroke.
- */
-function samplePerimeter(vertices: VecModel[], spacing = 3): VecModel[] {
-  const points: VecModel[] = [];
-  for (let index = 0; index < vertices.length; index++) {
-    const from = vertices[index];
-    const to = vertices[(index + 1) % vertices.length];
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / spacing));
-    // The final vertex of each edge is the first vertex of the next one, so stop
-    // one short to avoid duplicate points at the corners.
-    for (let step = 0; step < steps; step++) {
-      const t = step / steps;
-      points.push({ x: from.x + dx * t, y: from.y + dy * t });
-    }
-  }
-  return points;
-}
-
-/** A right triangle with the right angle in the bottom-left corner. */
-function rightTrianglePoints(size: number): VecModel[] {
-  return samplePerimeter([
+/** A triangle with the right angle in the bottom-left corner. */
+function rightTriangle(size: number): Point[] {
+  return [
     { x: 0, y: 0 },
     { x: 0, y: size },
     { x: size, y: size },
-  ]);
+  ];
 }
 
 /** A scalene triangle whose obtuse angle sits in the bottom-left corner. */
-function obtuseTrianglePoints(size: number): VecModel[] {
-  return samplePerimeter([
+function obtuseTriangle(size: number): Point[] {
+  return [
     { x: size * 0.1, y: size },
     { x: size, y: size },
     { x: size * 0.05, y: size * 0.15 },
-  ]);
+  ];
 }
+
+/** A regular polygon with a vertex at the top. */
+function regularPolygon(size: number, sides: number): Point[] {
+  const radius = size / 2;
+  const centre = size / 2;
+  return Array.from({ length: sides }, (_unused, index) => {
+    const angle = -Math.PI / 2 + (index * TAU) / sides;
+    return {
+      x: centre + radius * Math.cos(angle),
+      y: centre + radius * Math.sin(angle),
+    };
+  });
+}
+
+/** A five-pointed star. */
+function star(size: number): Point[] {
+  const outer = size / 2;
+  const inner = outer * 0.42;
+  const centre = size / 2;
+  return Array.from({ length: 10 }, (_unused, index) => {
+    const radius = index % 2 === 0 ? outer : inner;
+    const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+    return {
+      x: centre + radius * Math.cos(angle),
+      y: centre + radius * Math.sin(angle),
+    };
+  });
+}
+
+/** A heart from the classic parametric curve, flipped for a y-down canvas. */
+function heart(size: number): Point[] {
+  const steps = 64;
+  const raw: Point[] = [];
+  for (let index = 0; index < steps; index++) {
+    const t = (index / steps) * TAU;
+    raw.push({
+      x: 16 * Math.sin(t) ** 3,
+      y: -(
+        13 * Math.cos(t) -
+        5 * Math.cos(2 * t) -
+        2 * Math.cos(3 * t) -
+        Math.cos(4 * t)
+      ),
+    });
+  }
+  return fitToSize(raw, size);
+}
+
+/**
+ * A cloud: the outer edge of four overlapping circles, traced by shooting a ray
+ * out of the cloud's middle and keeping the furthest intersection.
+ */
+function cloud(size: number): Point[] {
+  const circles = [
+    { x: 0.36, y: 0.42, r: 0.26 },
+    { x: 0.64, y: 0.4, r: 0.24 },
+    { x: 0.48, y: 0.62, r: 0.3 },
+    { x: 0.26, y: 0.66, r: 0.18 },
+  ];
+  const centre = { x: 0.46, y: 0.5 };
+  const steps = 96;
+  const points: Point[] = [];
+
+  for (let index = 0; index < steps; index++) {
+    const angle = (index / steps) * TAU;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    let reach = 0;
+    for (const circle of circles) {
+      const ox = circle.x - centre.x;
+      const oy = circle.y - centre.y;
+      const b = ox * dx + oy * dy;
+      const discriminant = b * b - (ox * ox + oy * oy - circle.r * circle.r);
+      if (discriminant <= 0) continue;
+      reach = Math.max(reach, b + Math.sqrt(discriminant));
+    }
+    points.push({
+      x: (centre.x + dx * reach) * size,
+      y: (centre.y + dy * reach) * size,
+    });
+  }
+
+  return points;
+}
+
+/** A square outline, used by the two checkbox shapes. */
+function square(size: number, inset = 0): Point[] {
+  const from = inset * size;
+  const to = size - from;
+  return [
+    { x: from, y: from },
+    { x: to, y: from },
+    { x: to, y: to },
+    { x: from, y: to },
+  ];
+}
+
+/** Falls back to a plain rectangle if a generator ever returns too few points. */
+const EMPTY: Point[] = square(1);
 
 export const SHAPE_CATALOG: ShapeOption[] = [
   {
     id: "rectangle",
     label: "Rectangle",
     preview: "M4 6h16v12H4z",
-    geo: "rectangle",
+    tool: "rectangle",
+    shortcut: "R",
   },
   {
     id: "circle",
     label: "Circle",
     preview: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18",
-    geo: "ellipse",
-  },
-  {
-    id: "half-circle",
-    label: "Half circle",
-    preview: "M3 19a9 9 0 0 1 18 0z",
-    buildPoints: halfCirclePoints,
-    clickToPlace: true,
-  },
-  {
-    id: "quarter-circle",
-    label: "Quarter circle",
-    preview: "M21 21A18 18 0 0 0 3 3v18z",
-    buildPoints: quarterCirclePoints,
-    clickToPlace: true,
-  },
-  {
-    id: "equilateral-triangle",
-    label: "Equilateral triangle",
-    preview: "M12 4l9 16H3z",
-    geo: "triangle",
-  },
-  {
-    id: "right-triangle",
-    label: "Right triangle",
-    preview: "M4 4v16h16z",
-    buildPoints: rightTrianglePoints,
-    clickToPlace: true,
-  },
-  {
-    id: "obtuse-triangle",
-    label: "Obtuse triangle",
-    preview: "M4 20h17L3 5z",
-    buildPoints: obtuseTrianglePoints,
-    clickToPlace: true,
+    tool: "ellipse",
+    shortcut: "O",
   },
   {
     id: "diamond",
     label: "Diamond",
     preview: "M12 3l9 9l-9 9l-9-9z",
-    geo: "diamond",
+    tool: "diamond",
+    shortcut: "D",
   },
   {
-    id: "star",
-    label: "Star",
-    preview:
-      "M12 3l2.6 6.3l6.8.5l-5.2 4.4l1.6 6.6L12 17.2l-5.8 3.6l1.6-6.6l-5.2-4.4l6.8-.5z",
-    geo: "star",
+    id: "half-circle",
+    label: "Half circle",
+    preview: "M3 19a9 9 0 0 1 18 0z",
+    draw: (size) => ({ outline: halfCircle(size) }),
   },
+  {
+    id: "quarter-circle",
+    label: "Quarter circle",
+    preview: "M21 21A18 18 0 0 0 3 3v18z",
+    draw: (size) => ({ outline: quarterCircle(size) }),
+  },
+  {
+    id: "equilateral-triangle",
+    label: "Equilateral triangle",
+    preview: "M12 4l9 16H3z",
+    draw: (size) => ({
+      outline: [
+        { x: size / 2, y: 0 },
+        { x: size, y: (size * Math.sqrt(3)) / 2 },
+        { x: 0, y: (size * Math.sqrt(3)) / 2 },
+      ],
+    }),
+  },
+  {
+    id: "right-triangle",
+    label: "Right triangle",
+    preview: "M4 4v16h16z",
+    draw: (size) => ({ outline: rightTriangle(size) }),
+  },
+  {
+    id: "obtuse-triangle",
+    label: "Obtuse triangle",
+    preview: "M4 20h17L3 5z",
+    draw: (size) => ({ outline: obtuseTriangle(size) }),
+  },
+  { id: "star", label: "Star", preview: "M12 3l2.6 6.3l6.8.5l-5.2 4.4l1.6 6.6L12 17.2l-5.8 3.6l1.6-6.6l-5.2-4.4l6.8-.5z", draw: (size) => ({ outline: star(size) }) },
   {
     id: "pentagon",
     label: "Pentagon",
     preview: "M12 3l9 6.5l-3.4 11H6.4L3 9.5z",
-    geo: "pentagon",
+    draw: (size) => ({ outline: regularPolygon(size, 5) }),
   },
   {
     id: "hexagon",
     label: "Hexagon",
     preview: "M8 4h8l5 8l-5 8H8l-5-8z",
-    geo: "hexagon",
+    draw: (size) => ({ outline: regularPolygon(size, 6) }),
   },
   {
     id: "octagon",
     label: "Octagon",
     preview: "M8 3h8l5 5v8l-5 5H8l-5-5V8z",
-    geo: "octagon",
+    draw: (size) => ({ outline: regularPolygon(size, 8) }),
   },
   {
     id: "trapezoid",
     label: "Trapezoid",
     preview: "M5 6h14l2 12H3z",
-    geo: "trapezoid",
+    draw: (size) => ({
+      outline: [
+        { x: size * 0.2, y: 0 },
+        { x: size * 0.8, y: 0 },
+        { x: size, y: size },
+        { x: 0, y: size },
+      ],
+    }),
   },
   {
     id: "rhombus",
     label: "Rhombus",
     preview: "M7 3h10l4 9l-4 9H7l-4-9z",
-    geo: "rhombus",
+    draw: (size) => ({
+      outline: [
+        { x: size * 0.25, y: 0 },
+        { x: size * 0.75, y: 0 },
+        { x: size, y: size / 2 },
+        { x: size * 0.75, y: size },
+        { x: size * 0.25, y: size },
+        { x: 0, y: size / 2 },
+      ],
+    }),
   },
   {
     id: "cloud",
     label: "Cloud",
     preview:
       "M7 18h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7.2 9.6A4.2 4.2 0 0 0 7 18z",
-    geo: "cloud",
+    draw: (size) => ({ outline: cloud(size) }),
   },
   {
     id: "heart",
     label: "Heart",
     preview:
       "M12 20C5 15 3 10.5 6 8c2.2-1.8 4.6-.6 6 1c1.4-1.6 3.8-2.8 6-1c3 2.5 1 7-6 12z",
-    geo: "heart",
+    draw: (size) => ({ outline: heart(size) }),
   },
   {
     id: "x-box",
     label: "Cross box",
     preview: "M4 6h16v12H4zM7 9l10 6M17 9L7 15",
-    geo: "x-box",
+    draw: (size) => ({
+      outline: square(size),
+      strokes: [
+        [
+          { x: size * 0.25, y: size * 0.25 },
+          { x: size * 0.75, y: size * 0.75 },
+        ],
+        [
+          { x: size * 0.75, y: size * 0.25 },
+          { x: size * 0.25, y: size * 0.75 },
+        ],
+      ],
+    }),
   },
   {
     id: "check-box",
     label: "Check box",
     preview: "M4 6h16v12H4zM7 13l3 3l7-8",
-    geo: "check-box",
+    draw: (size) => ({
+      outline: square(size),
+      strokes: [
+        [
+          { x: size * 0.24, y: size * 0.54 },
+          { x: size * 0.44, y: size * 0.74 },
+          { x: size * 0.78, y: size * 0.28 },
+        ],
+      ],
+    }),
   },
 ];
 
@@ -233,83 +424,122 @@ export function findShapeOption(id: string): ShapeOption {
   return SHAPE_CATALOG.find((option) => option.id === id) ?? SHAPE_CATALOG[0];
 }
 
-/** The order and labels of tldraw's fill styles, as exposed in the dock. */
-export const FILL_OPTIONS: { name: TLDefaultFillStyle; label: string }[] = [
-  { name: "none", label: "None" },
-  { name: "semi", label: "Semi" },
-  { name: "solid", label: "Solid" },
-  { name: "pattern", label: "Pattern" },
-];
-
 export interface ShapeStyle {
-  color: TLDefaultColorStyle;
-  fill: TLDefaultFillStyle;
-  size: TLDefaultSizeStyle;
+  color: BoardColorName;
+  fill: BoardFillName;
+  size: BoardSizeName;
 }
 
 /** Default on-canvas size for a generated shape. */
 const GENERATED_SHAPE_SIZE = 200;
 
-/** Shifts a point cloud so its bounding box starts at the origin. */
-function normalisePoints(points: VecModel[]): {
-  points: VecModel[];
-  width: number;
-  height: number;
-} {
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
+/**
+ * Turns a point cloud into a closed linear element, positioned so its bounding
+ * box is centred on `centre`.
+ */
+function outlineElement(
+  loop: Point[],
+  style: ShapeStyle,
+  centre: Point,
+  fill: boolean,
+): ExcalidrawElementSkeleton {
+  const { points: local, width, height } = normalise(closeLoop(loop));
+  // Centre the bounding box on `centre`, then move the element's origin onto its
+  // first point, which is where Excalidraw expects a linear element to start.
+  const { x, y, points } = rebaseOnFirstPoint(local, {
+    x: centre.x - width / 2,
+    y: centre.y - height / 2,
+  });
   return {
-    points: points.map((point) => ({ x: point.x - minX, y: point.y - minY })),
-    width: Math.max(...xs) - minX,
-    height: Math.max(...ys) - minY,
+    type: "line",
+    x,
+    y,
+    width,
+    height,
+    points: points.map((point) => [point.x, point.y] as [number, number]),
+    strokeColor: colorHex(style.color),
+    backgroundColor: fill
+      ? fillBackgroundFor(style.fill, style.color)
+      : "transparent",
+    fillStyle: style.fill === "none" ? "solid" : style.fill,
+    strokeWidth: strokeWidthFor(style.size),
+    strokeStyle: "solid",
+    // Clean, straight lines: no sketchy wobble.
+    roughness: 0,
+    opacity: 100,
+    // Sharp corners rather than Excalidraw's rounded default.
+    roundness: null,
   };
 }
 
-/**
- * Places one of the generated (non-built-in) shapes at `center`, rendered as a
- * closed tldraw draw shape so it behaves like any other shape on the board.
- */
-export function insertGeneratedShape(
-  editor: Editor,
+/** The scene point at the middle of the visible canvas. */
+export function viewportCentre(api: ExcalidrawImperativeAPI): Point {
+  const { width, height, scrollX, scrollY, zoom } = api.getAppState();
+  return {
+    x: (width / 2 - scrollX) / zoom.value,
+    y: (height / 2 - scrollY) / zoom.value,
+  };
+}
+
+/** Builds the Excalidraw elements for one of the generated shapes. */
+export function buildShapeElements(
   option: ShapeOption,
   style: ShapeStyle,
-  center: VecModel,
-) {
-  if (!option.buildPoints) return null;
+  centre: Point,
+): ExcalidrawElementSkeleton[] {
+  const drawn = option.draw?.(GENERATED_SHAPE_SIZE);
+  if (!drawn) return [];
 
-  const { points, width, height } = normalisePoints(
-    option.buildPoints(GENERATED_SHAPE_SIZE),
-  );
+  const elements = [
+    outlineElement(drawn.outline.length >= 3 ? drawn.outline : EMPTY, style, centre, true),
+  ];
 
-  // The new draw shape's segments are stored delta-encoded, so encode the point
-  // cloud with tldraw's own helper to stay compatible with the shape schema.
-  const [segment] = compressLegacySegments([{ type: "free", points }]);
+  // Extra strokes (the glyph inside a cross box or check box) keep the stroke
+  // colour but never a background of their own.
+  for (const stroke of drawn.strokes ?? []) {
+    elements.push(outlineElement(stroke, style, centre, false));
+  }
 
-  const shapeId = createShapeId();
+  return elements;
+}
 
-  editor.createShape({
-    id: shapeId,
-    type: "draw",
-    x: center.x - width / 2,
-    y: center.y - height / 2,
-    props: {
-      color: style.color,
-      fill: style.fill,
-      dash: "solid",
-      size: style.size,
-      segments: [segment],
-      isComplete: true,
-      isClosed: true,
-      isPen: false,
-      scale: 1,
-      scaleX: 1,
-      scaleY: 1,
+/**
+ * Places one of the generated shapes at `centre`, selects it and switches back
+ * to the selection tool so it can be moved and resized straight away.
+ */
+export function insertGeneratedShape(
+  api: ExcalidrawImperativeAPI,
+  option: ShapeOption,
+  style: ShapeStyle,
+  centre: Point,
+): void {
+  const skeletons = buildShapeElements(option, style, centre);
+  if (skeletons.length === 0) return;
+
+  let elements = convertToExcalidrawElements(skeletons, { regenerateIds: true });
+
+  // A couple of shapes are an outline plus a glyph (cross box, check box). They
+  // are grouped so the glyph can never be left behind when the shape is moved,
+  // resized or rotated.
+  if (elements.length > 1) {
+    const groupId = createId();
+    elements = elements.map((element) => ({ ...element, groupIds: [groupId] }));
+  }
+
+  const selectedElementIds: Record<string, true> = {};
+  for (const element of elements) selectedElementIds[element.id] = true;
+
+  api.updateScene({
+    elements: [...api.getSceneElements(), ...elements],
+    appState: {
+      selectedElementIds,
+      activeTool: {
+        type: "selection",
+        customType: null,
+        lastActiveTool: null,
+        locked: false,
+      },
     },
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });
-
-  editor.setSelectedShapes([shapeId]);
-  editor.setCurrentTool("select");
-  return shapeId;
 }

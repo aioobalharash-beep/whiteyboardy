@@ -1,83 +1,87 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import {
-  Box,
-  DefaultColorStyle,
-  DefaultFillStyle,
-  DefaultSizeStyle,
-  GeoShapeGeoStyle,
-  getSnapshot,
-  loadSnapshot,
-  Tldraw,
-  type Editor,
-  type TLDefaultFillStyle,
-} from "tldraw";
+  CaptureUpdateAction,
+  Excalidraw,
+  viewportCoordsToSceneCoords,
+} from "@excalidraw/excalidraw";
+import type {
+  AppState,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { ImportedDataState } from "@excalidraw/excalidraw/data/types";
 import { BoardSidebar } from "./components/BoardSidebar";
 import { CropOverlay, type ScreenRect } from "./components/CropOverlay";
 import { ExportBar } from "./components/ExportBar";
+import { PenOverlay } from "./components/PenOverlay";
 import { Toast, type Notice } from "./components/Toast";
-import { ToolDock } from "./components/ToolDock";
+import { ToolDock, type DockToolId } from "./components/ToolDock";
 import { ZoomHud } from "./components/ZoomHud";
-import {
-  EmptyBoardError,
-  exportBoard,
-  type ExportFormat,
-} from "./lib/export";
+import { EmptyBoardError, exportBoard, type ExportFormat } from "./lib/export";
+import { usePenTool } from "./hooks/usePenTool";
 import { insertImagesFromDevice } from "./lib/insert";
-import type { BoardColorName, BoardSizeName } from "./lib/palette";
-import { findShapeOption, insertGeneratedShape } from "./lib/shapes";
-import { insertTable, tableShapeUtils } from "./shapes/TableShape";
-import { PEN_TOOL_ID, penConfig, penTools, type PenSpline } from "./tools/PenTool";
+import { PEN_CUSTOM_TYPE, type PenStyle } from "./lib/pen";
+import {
+  DEFAULT_COLOR,
+  DEFAULT_FILL,
+  DEFAULT_SIZE,
+  colorHex,
+  colorNameFor,
+  fillBackgroundFor,
+  fillNameFor,
+  sizeNameFor,
+  strokeWidthFor,
+  type BoardColorName,
+  type BoardFillName,
+  type BoardSizeName,
+} from "./lib/palette";
+import { boardInitialData, serializeScene } from "./lib/scene";
+import {
+  findShapeOption,
+  insertGeneratedShape,
+  viewportCentre,
+} from "./lib/shapes";
 import {
   createBoardId,
   createFolderId,
-  deleteBoardSnapshot,
+  deleteBoardScene,
   isTauriRuntime,
-  loadBoardSnapshot,
+  loadBoardScene,
   loadLibrary,
-  saveBoardSnapshot,
+  saveBoardScene,
   saveLibrary,
+  storageStatus,
   type BoardIndexEntry,
-  type BoardSnapshot,
   type FolderEntry,
 } from "./lib/storage";
 
 /** Width of the collapsible sidebar, mirrored by the canvas inset. */
 const SIDEBAR_WIDTH = 256;
-/** Debounce window for writing a board snapshot to disk. */
+/** Debounce window for writing a board to disk. */
 const AUTOSAVE_DELAY_MS = 500;
 /** Debounce window for writing the board library to disk. */
 const INDEX_SAVE_DELAY_MS = 300;
 
-/**
- * Single-key shortcuts for the tools in the dock. tldraw's own shortcuts are
- * bound by its UI, which this app hides, so we route them ourselves.
- */
-const TOOL_SHORTCUTS: Record<string, string> = {
-  v: "select",
-  d: "draw",
-  p: PEN_TOOL_ID,
-  e: "eraser",
-  a: "arrow",
-  t: "text",
-};
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
-  );
+/** The live scene, exactly as Excalidraw's change listener reported it. */
+interface LiveScene {
+  boardId: string;
+  elements: readonly ExcalidrawElement[];
+  appState: AppState;
+  files: BinaryFiles;
 }
 
-/** Clears the canvas for a board that has no saved snapshot yet. */
-function resetBoard(editor: Editor): void {
-  const shapeIds = [...editor.getCurrentPageShapeIds()];
-  if (shapeIds.length > 0) editor.deleteShapes(shapeIds);
-  editor.setCurrentTool("select");
-  editor.setCamera({ x: 0, y: 0, z: 1 });
+/**
+ * `updateScene` is declared as taking a complete `AppState` slice, but at
+ * runtime it only copies the properties it is handed — so a partial patch is
+ * exactly what it expects. Keeping that one discrepancy in a single helper
+ * means it can never leak into a caller's types.
+ */
+function partialAppState(
+  patch: Partial<AppState>,
+): Pick<AppState, keyof AppState> {
+  return patch as Pick<AppState, keyof AppState>;
 }
 
 /** Asks the user to confirm a destructive action, natively when possible. */
@@ -102,32 +106,72 @@ async function confirmDestructive(
 }
 
 export default function App() {
-  const [editor, setEditor] = useState<Editor | null>(null);
+  const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [boards, setBoards] = useState<BoardIndexEntry[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [zenMode, setZenMode] = useState(false);
-  const [activeToolId, setActiveToolId] = useState("select");
+  const [activeToolId, setActiveToolId] = useState<DockToolId>("selection");
   const [shapeId, setShapeId] = useState("rectangle");
-  const [strokeColor, setStrokeColor] = useState<BoardColorName>("black");
-  const [strokeSize, setStrokeSize] = useState<BoardSizeName>("m");
-  const [fill, setFill] = useState<TLDefaultFillStyle>("none");
-  const [penSpline, setPenSpline] = useState<PenSpline>("line");
+  const [strokeColor, setStrokeColor] = useState<BoardColorName>(DEFAULT_COLOR);
+  const [strokeSize, setStrokeSize] = useState<BoardSizeName>(DEFAULT_SIZE);
+  const [fill, setFill] = useState<BoardFillName>(DEFAULT_FILL);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
   const [isCropping, setIsCropping] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
+  /**
+   * The data the canvas is mounted with, tagged with the board it belongs to.
+   *
+   * The tag matters: while a board switch is in flight the canvas must not be
+   * mounted with the *previous* board's scene under the new board's id — its
+   * first change notification would then be saved into the wrong board.
+   */
+  const [loadedBoard, setLoadedBoard] = useState<{
+    boardId: string;
+    data: ImportedDataState;
+  } | null>(null);
+  const [boardLoading, setBoardLoading] = useState(false);
+
   const activeBoardIdRef = useRef<string | null>(null);
-  /** Board ids that still exist in the library; snapshots are never written for others. */
+  /** Board ids that still exist in the library; scenes are never written for others. */
   const liveBoardIdsRef = useRef<Set<string>>(new Set());
-  const autosaveRef = useRef<{ flush: () => void; cancel: () => void }>({
-    flush: () => {},
-    cancel: () => {},
-  });
+  /** The newest scene the canvas reported, with the board it belongs to. */
+  const sceneRef = useRef<LiveScene | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+
+  // Mirrors of the dock state, so the change listener can tell what moved
+  // without re-rendering the app on every pointer move.
+  const activeToolIdRef = useRef<DockToolId>("selection");
+  const strokeColorRef = useRef<BoardColorName>(DEFAULT_COLOR);
+  const strokeSizeRef = useRef<BoardSizeName>(DEFAULT_SIZE);
+  const fillRef = useRef<BoardFillName>(DEFAULT_FILL);
+  const lastElementsRef = useRef<readonly ExcalidrawElement[] | null>(null);
+  const lastFilesRef = useRef<BinaryFiles | null>(null);
+
+  /** Read when a pen path is committed, so it lands in the current style. */
+  const penStyle = useCallback(
+    (): PenStyle => ({
+      strokeColor: colorHex(strokeColorRef.current),
+      strokeWidth: strokeWidthFor(strokeSizeRef.current),
+      fillStyle: fillRef.current === "none" ? "solid" : fillRef.current,
+      fillColor:
+        fillRef.current === "none"
+          ? null
+          : fillBackgroundFor(fillRef.current, strokeColorRef.current),
+    }),
+    [],
+  );
+
+  const pen = usePenTool({
+    api,
+    active: activeToolId === "pen",
+    getStyle: penStyle,
+  });
 
   const activeBoard = useMemo(
     () => boards.find((board) => board.id === activeBoardId) ?? null,
@@ -151,6 +195,7 @@ export default function App() {
   useEffect(
     () => () => {
       if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+      if (autosaveTimerRef.current !== null) window.clearTimeout(autosaveTimerRef.current);
     },
     [],
   );
@@ -231,136 +276,199 @@ export default function App() {
   }, [folders, boards, libraryLoaded]);
 
   /**
-   * Snapshots the canvas *synchronously* and writes it to `boardId`.
-   *
-   * Capturing the snapshot before the first `await` is what makes this safe to
-   * call from a board switch: it always reflects the outgoing board's state,
-   * even if the change listener has not fired yet.
+   * Tell the truth about where the boards are going: if the app data directory
+   * cannot be used in the packaged app, the library silently lives in the
+   * webview's local storage instead, which the user deserves to know about.
    */
-  const writeBoardSnapshot = useCallback(
-    async (boardId: string) => {
-      if (!editor) return;
-      // Never resurrect a board the user has already deleted.
-      if (!liveBoardIdsRef.current.has(boardId)) return;
-
-      let snapshot: BoardSnapshot;
-      try {
-        snapshot = getSnapshot(editor.store);
-      } catch (error) {
-        console.error("[whiteyboardy] could not snapshot the board", error);
-        return;
-      }
-
-      try {
-        await saveBoardSnapshot(boardId, snapshot);
-        if (!liveBoardIdsRef.current.has(boardId)) {
-          // The board was deleted while this write was in flight, so clean up the
-          // file we just recreated instead of leaving it orphaned on disk.
-          await deleteBoardSnapshot(boardId).catch(() => {});
-          return;
-        }
-        setBoards((previous) =>
-          previous.map((board) =>
-            board.id === boardId ? { ...board, updatedAt: Date.now() } : board,
-          ),
-        );
-      } catch (error) {
-        console.error("[whiteyboardy] could not save the board", error);
-      }
-    },
-    [editor],
-  );
-
-  // --- Debounced autosave of the active board ----------------------------
   useEffect(() => {
-    if (!editor) return;
+    if (!libraryLoaded) return;
+    let cancelled = false;
 
-    let timer: number | null = null;
-
-    const persist = () => {
-      timer = null;
-      const boardId = activeBoardIdRef.current;
-      if (!boardId) return;
-      void writeBoardSnapshot(boardId);
-    };
-
-    const flush = () => {
-      if (timer !== null) {
-        window.clearTimeout(timer);
-        timer = null;
-        persist();
-      }
-    };
-
-    const cancel = () => {
-      if (timer !== null) {
-        window.clearTimeout(timer);
-        timer = null;
-      }
-    };
-
-    autosaveRef.current = { flush, cancel };
-
-    // Every stroke and shape change on the document is written out, debounced.
-    const stopListening = editor.store.listen(
-      () => {
-        if (timer !== null) window.clearTimeout(timer);
-        timer = window.setTimeout(persist, AUTOSAVE_DELAY_MS);
-      },
-      { scope: "document", source: "user" },
-    );
+    void storageStatus().then((report) => {
+      if (cancelled) return;
+      if (report.backend === "files" || !isTauriRuntime()) return;
+      showNotice({
+        kind: "error",
+        text: `Could not write to the app data folder (${
+          report.error ?? "unknown reason"
+        }). Boards are being saved to local web storage instead.`,
+      });
+    });
 
     return () => {
-      stopListening();
-      cancel();
-      autosaveRef.current = { flush: () => {}, cancel: () => {} };
+      cancelled = true;
     };
-  }, [editor, writeBoardSnapshot]);
+  }, [libraryLoaded, showNotice]);
+
+  /**
+   * Serializes and writes one board.
+   *
+   * The scene is serialized *synchronously*, before the first `await`, so a
+   * write always reflects the state it was handed even if the canvas has moved
+   * on — or been swapped for another board — by the time the disk answers.
+   */
+  const writeScene = useCallback(async (scene: LiveScene) => {
+    // Never resurrect a board the user has already deleted.
+    if (!liveBoardIdsRef.current.has(scene.boardId)) return;
+
+    let json: string;
+    try {
+      json = serializeScene(scene.elements, scene.appState, scene.files);
+    } catch (error) {
+      console.error("[whiteyboardy] could not serialize the board", error);
+      return;
+    }
+
+    try {
+      await saveBoardScene(scene.boardId, json);
+      if (!liveBoardIdsRef.current.has(scene.boardId)) {
+        // The board was deleted while this write was in flight, so clean up the
+        // file we just recreated instead of leaving it orphaned on disk.
+        await deleteBoardScene(scene.boardId).catch(() => {});
+        return;
+      }
+      setBoards((previous) =>
+        previous.map((board) =>
+          board.id === scene.boardId ? { ...board, updatedAt: Date.now() } : board,
+        ),
+      );
+    } catch (error) {
+      console.error("[whiteyboardy] could not save the board", error);
+    }
+  }, []);
+
+  const scheduleAutosave = useCallback(() => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      const scene = sceneRef.current;
+      // A pending write must never leak into the board that replaced it.
+      if (!scene || scene.boardId !== activeBoardIdRef.current) return;
+      void writeScene(scene);
+    }, AUTOSAVE_DELAY_MS);
+  }, [writeScene]);
+
+  const cancelAutosave = useCallback(() => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+  }, []);
 
   /**
    * Saves the board currently on screen right now, ignoring the debounce.
    *
    * This does not depend on a pending timer existing: board switches must never
-   * lose edits that the store listener has not yet reported.
+   * lose edits the change listener has not reported yet.
    */
   const saveActiveBoardNow = useCallback(async () => {
-    const boardId = activeBoardIdRef.current;
-    if (!boardId) return;
-    autosaveRef.current.cancel();
-    await writeBoardSnapshot(boardId);
-  }, [writeBoardSnapshot]);
+    cancelAutosave();
+    const scene = sceneRef.current;
+    if (!scene) return;
+    await writeScene(scene);
+  }, [cancelAutosave, writeScene]);
+
+  /** Keeps the dock in step with whatever the canvas is doing. */
+  const syncDock = useCallback((appState: AppState) => {
+    const active = appState.activeTool;
+    // Our pen is a custom tool, so its id never arrives from Excalidraw.
+    const tool: DockToolId =
+      active.type === "custom"
+        ? active.customType === PEN_CUSTOM_TYPE
+          ? "pen"
+          : "selection"
+        : (active.type as DockToolId);
+    if (tool !== activeToolIdRef.current) {
+      activeToolIdRef.current = tool;
+      setActiveToolId(tool);
+    }
+
+    // Selecting an element adopts its style, so the swatches always describe
+    // what would be drawn (and what is selected).
+    const color = colorNameFor(appState.currentItemStrokeColor);
+    if (color && color !== strokeColorRef.current) {
+      strokeColorRef.current = color;
+      setStrokeColor(color);
+    }
+
+    const size = sizeNameFor(appState.currentItemStrokeWidth);
+    if (size !== strokeSizeRef.current) {
+      strokeSizeRef.current = size;
+      setStrokeSize(size);
+    }
+
+    const nextFill = fillNameFor(
+      appState.currentItemFillStyle,
+      appState.currentItemBackgroundColor,
+    );
+    if (nextFill !== fillRef.current) {
+      fillRef.current = nextFill;
+      setFill(nextFill);
+    }
+  }, []);
+
+  /** Everything Excalidraw reports: the scene, the styles, the camera. */
+  const handleSceneChange = useCallback(
+    (
+      boardId: string,
+      elements: readonly ExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles,
+    ) => {
+      sceneRef.current = { boardId, elements, appState, files };
+
+      // Only a change to the *document* parks a write: panning and zooming
+      // would otherwise re-serialize the board several times a second. The
+      // camera still rides along with the next document change, and board
+      // switches save unconditionally.
+      const documentChanged =
+        elements !== lastElementsRef.current || files !== lastFilesRef.current;
+      lastElementsRef.current = elements;
+      lastFilesRef.current = files;
+
+      if (documentChanged) scheduleAutosave();
+      syncDock(appState);
+    },
+    [scheduleAutosave, syncDock],
+  );
 
   // --- Load the active board into the canvas -----------------------------
   useEffect(() => {
-    if (!editor || !activeBoardId) return;
+    if (!activeBoardId) return;
 
-    // Drop anything the previous board left pending so it can never be written
-    // into the board we are about to open.
-    autosaveRef.current.cancel();
+    // Whatever the previous board left pending is settled *before* the switch
+    // (see `handleSelectBoard`); from here on the canvas belongs to the new one.
+    cancelAutosave();
+    sceneRef.current = null;
+    lastElementsRef.current = null;
+    lastFilesRef.current = null;
 
     let cancelled = false;
+    setBoardLoading(true);
 
     void (async () => {
       try {
-        const snapshot = await loadBoardSnapshot(activeBoardId);
+        const file = await loadBoardScene(activeBoardId);
         if (cancelled) return;
-        if (snapshot) {
-          loadSnapshot(editor.store, snapshot);
-        } else {
-          resetBoard(editor);
-        }
-        // The load itself is a document change; ignore it for autosave purposes.
-        autosaveRef.current.cancel();
+        const { initialData } = boardInitialData(file);
+        setLoadedBoard({ boardId: activeBoardId, data: initialData });
       } catch (error) {
         console.error("[whiteyboardy] could not open the board", error);
-        if (!cancelled) showNotice({ kind: "error", text: "Could not open that board." });
+        if (cancelled) return;
+        showNotice({ kind: "error", text: "Could not open that board." });
+        const { initialData } = boardInitialData(null);
+        setLoadedBoard({ boardId: activeBoardId, data: initialData });
+      } finally {
+        if (!cancelled) setBoardLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [editor, activeBoardId, showNotice]);
+  }, [activeBoardId, cancelAutosave, showNotice]);
 
   // --- Best-effort save when the window goes away ------------------------
   useEffect(() => {
@@ -378,19 +486,6 @@ export default function App() {
     };
   }, [saveActiveBoardNow]);
 
-  // --- Mirror the editor's active tool into the dock ---------------------
-  useEffect(() => {
-    if (!editor) return;
-    const sync = () => setActiveToolId(editor.getCurrentToolId());
-    sync();
-    return editor.store.listen(sync, { scope: "session", source: "all" });
-  }, [editor]);
-
-  // --- Keep the pen tool's segment style in sync with the dock -----------
-  useEffect(() => {
-    penConfig.spline = penSpline;
-  }, [penSpline]);
-
   // --- Global shortcuts ---------------------------------------------------
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -401,14 +496,39 @@ export default function App() {
         return;
       }
 
-      // Never steal keys from the inline rename inputs or table cells.
+      // Never steal keys from the inline rename inputs.
       if (isTypingTarget(event.target)) return;
 
+      // An in-progress pen path owns Enter, Escape and the delete keys.
+      if (pen.handleKeyDown(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-        // Tab is the Zen mode toggle, so keep it away from tldraw's focus nav.
+        // Tab is the Zen mode toggle, so keep it away from focus navigation.
         event.preventDefault();
         event.stopPropagation();
         setZenMode((zen) => !zen);
+        return;
+      }
+
+      // The pen is not one of Excalidraw's tools, so its shortcut is ours to
+      // handle. Every other tool letter is left to the engine.
+      if (
+        event.key.toLowerCase() === "n" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        api?.setActiveTool({
+          type: "custom",
+          customType: PEN_CUSTOM_TYPE,
+          locked: true,
+        });
         return;
       }
 
@@ -416,36 +536,16 @@ export default function App() {
         event.preventDefault();
         event.stopPropagation();
         setSidebarOpen((open) => !open);
-        return;
-      }
-
-      if (!editor) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-
-      const toolId = TOOL_SHORTCUTS[event.key.toLowerCase()];
-      if (toolId) {
-        event.preventDefault();
-        editor.setCurrentTool(toolId);
-        editor.focus();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [isCropping, editor]);
+  }, [api, isCropping, pen.handleKeyDown]);
 
   // --- Board actions ------------------------------------------------------
-  /**
-   * Drops a half-drawn pen path before the canvas is replaced, so the outgoing
-   * board is snapshotted without the trailing rubber-band point.
-   */
-  const settleTransientTool = useCallback(() => {
-    if (editor?.getCurrentToolId() === PEN_TOOL_ID) editor.setCurrentTool("select");
-  }, [editor]);
-
   const handleCreateBoard = useCallback(
     async (folderId: string | null) => {
-      settleTransientTool();
       await saveActiveBoardNow();
       const board: BoardIndexEntry = {
         id: createBoardId(),
@@ -457,18 +557,17 @@ export default function App() {
       setBoards((previous) => [...previous, board]);
       setActiveBoardId(board.id);
     },
-    [boards.length, saveActiveBoardNow, settleTransientTool],
+    [boards.length, saveActiveBoardNow],
   );
 
   const handleSelectBoard = useCallback(
     async (boardId: string) => {
       if (boardId === activeBoardIdRef.current) return;
-      settleTransientTool();
       // Make sure the board we are leaving is on disk before we swap the canvas.
       await saveActiveBoardNow();
       setActiveBoardId(boardId);
     },
-    [saveActiveBoardNow, settleTransientTool],
+    [saveActiveBoardNow],
   );
 
   const handleRenameBoard = useCallback((boardId: string, name: string) => {
@@ -537,25 +636,21 @@ export default function App() {
       );
       if (!confirmed) return;
 
-      const isActiveBoard = boardId === activeBoardIdRef.current;
-      if (isActiveBoard) {
-        autosaveRef.current.cancel();
-        settleTransientTool();
-      }
+      if (boardId === activeBoardIdRef.current) cancelAutosave();
 
       const remaining = boards.filter((entry) => entry.id !== boardId);
       setBoards(remaining);
 
-      void deleteBoardSnapshot(boardId).catch((error) =>
+      void deleteBoardScene(boardId).catch((error) =>
         console.error("[whiteyboardy] could not delete the board file", error),
       );
 
-      if (isActiveBoard) {
+      if (boardId === activeBoardIdRef.current) {
         const next = [...remaining].sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (next) setActiveBoardId(next.id);
       }
     },
-    [boards, settleTransientTool],
+    [boards, cancelAutosave],
   );
 
   // --- Folder actions -----------------------------------------------------
@@ -607,106 +702,143 @@ export default function App() {
   );
 
   // --- Tools, colour, thickness and fill ---------------------------------
-  const handleSelectTool = useCallback(
-    (toolId: string) => {
-      if (!editor) return;
-      editor.setCurrentTool(toolId);
-      // Keep keyboard shortcuts alive after clicking our own chrome.
-      editor.focus();
+  /**
+   * Applies a style change to the editor: it becomes the style of the *next*
+   * shape drawn, and — when something is selected — is written onto the
+   * selected elements too, as an undoable step.
+   */
+  const applyStyle = useCallback(
+    (appStatePatch: Partial<AppState>, elementPatch: Partial<ExcalidrawElement>) => {
+      if (!api) return;
+
+      const state = api.getAppState();
+      const selectedIds = new Set(
+        Object.entries(state.selectedElementIds)
+          .filter(([, selected]) => selected)
+          .map(([id]) => id),
+      );
+
+      if (selectedIds.size === 0) {
+        api.updateScene({
+          appState: partialAppState(appStatePatch),
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+        return;
+      }
+
+      api.updateScene({
+        elements: api
+          .getSceneElements()
+          .map((element) =>
+            selectedIds.has(element.id)
+              ? ({ ...element, ...elementPatch } as ExcalidrawElement)
+              : element,
+          ),
+        appState: partialAppState(appStatePatch),
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
     },
-    [editor],
+    [api],
   );
 
-  const styleForNewShapes = useMemo(
-    () => ({ color: strokeColor, fill, size: strokeSize }),
-    [strokeColor, fill, strokeSize],
+  const handleSelectTool = useCallback(
+    (toolId: DockToolId) => {
+      if (!api) return;
+      // The pen is a custom tool: Excalidraw only knows its host-side type. It
+      // is activated *locked*, otherwise the engine hands the canvas back to
+      // the selection tool after every single click.
+      if (toolId === "pen") {
+        api.setActiveTool({
+          type: "custom",
+          customType: PEN_CUSTOM_TYPE,
+          locked: true,
+        });
+        return;
+      }
+      api.setActiveTool({ type: toolId, locked: false });
+    },
+    [api],
   );
 
   const handleSelectShape = useCallback(
     (nextShapeId: string) => {
       setShapeId(nextShapeId);
-      if (!editor) return;
+      if (!api) return;
 
       const option = findShapeOption(nextShapeId);
-      if (option.geo) {
-        // Built-in geo shapes: arm tldraw's own tool so you drag out the size.
-        editor.setStyleForNextShapes(GeoShapeGeoStyle, option.geo);
-        editor.setCurrentTool("geo");
-      } else {
-        // Generated shapes have no tldraw tool, so place them at the viewport
-        // centre and select them, ready to move and resize.
-        insertGeneratedShape(
-          editor,
-          option,
-          styleForNewShapes,
-          editor.getViewportPageBounds().center,
-        );
+      if (option.tool) {
+        // Excalidraw's own tools: drag on the canvas to set the size.
+        api.setActiveTool({ type: option.tool, locked: false });
+        return;
       }
-      editor.focus();
+
+      // Generated shapes have no tool of their own, so they are placed at the
+      // middle of the viewport, selected, ready to move and resize.
+      insertGeneratedShape(
+        api,
+        option,
+        { color: strokeColorRef.current, fill: fillRef.current, size: strokeSizeRef.current },
+        viewportCentre(api),
+      );
     },
-    [editor, styleForNewShapes],
+    [api],
   );
 
   const handleSelectColor = useCallback(
     (color: BoardColorName) => {
+      strokeColorRef.current = color;
       setStrokeColor(color);
-      if (!editor) return;
-      editor.setStyleForNextShapes(DefaultColorStyle, color);
-      if (editor.getSelectedShapeIds().length > 0) {
-        editor.setStyleForSelectedShapes(DefaultColorStyle, color);
-      }
+
+      const hex = colorHex(color);
+      // A filled shape keeps its fill in step with the stroke it is drawn in.
+      const background = fillBackgroundFor(fillRef.current, color);
+      applyStyle(
+        {
+          currentItemStrokeColor: hex,
+          currentItemBackgroundColor: background,
+        },
+        {
+          strokeColor: hex,
+          ...(fillRef.current === "none" ? {} : { backgroundColor: background }),
+        },
+      );
     },
-    [editor],
+    [applyStyle],
   );
 
   const handleSelectSize = useCallback(
     (size: BoardSizeName) => {
+      strokeSizeRef.current = size;
       setStrokeSize(size);
-      if (!editor) return;
-      editor.setStyleForNextShapes(DefaultSizeStyle, size);
-      if (editor.getSelectedShapeIds().length > 0) {
-        editor.setStyleForSelectedShapes(DefaultSizeStyle, size);
-      }
+
+      const strokeWidth = strokeWidthFor(size);
+      applyStyle({ currentItemStrokeWidth: strokeWidth }, { strokeWidth });
     },
-    [editor],
+    [applyStyle],
   );
 
   const handleSelectFill = useCallback(
-    (nextFill: TLDefaultFillStyle) => {
+    (nextFill: BoardFillName) => {
+      fillRef.current = nextFill;
       setFill(nextFill);
-      if (!editor) return;
-      editor.setStyleForNextShapes(DefaultFillStyle, nextFill);
-      if (editor.getSelectedShapeIds().length > 0) {
-        editor.setStyleForSelectedShapes(DefaultFillStyle, nextFill);
-      }
+
+      const background = fillBackgroundFor(nextFill, strokeColorRef.current);
+      applyStyle(
+        {
+          currentItemFillStyle: nextFill === "none" ? "solid" : nextFill,
+          currentItemBackgroundColor: background,
+        },
+        { fillStyle: nextFill === "none" ? "solid" : nextFill, backgroundColor: background },
+      );
     },
-    [editor],
+    [applyStyle],
   );
 
-  const handleSelectPenSpline = useCallback(
-    (spline: PenSpline) => {
-      setPenSpline(spline);
-      penConfig.spline = spline;
-      if (!editor) return;
-
-      // Retune any selected paths so the choice is visible straight away.
-      const selectedLines = editor
-        .getSelectedShapeIds()
-        .filter((shapeId) => editor.getShape(shapeId)?.type === "line");
-      if (selectedLines.length > 0) {
-        editor.updateShapes(
-          selectedLines.map((shapeId) => ({ id: shapeId, type: "line" as const, props: { spline } })),
-        );
-      }
-    },
-    [editor],
-  );
-
-  // --- Insert image / table ----------------------------------------------
+  // --- Insert image -------------------------------------------------------
   const handleInsertImage = useCallback(async () => {
-    if (!editor) return;
+    if (!api) return;
     try {
-      const count = await insertImagesFromDevice(editor);
+      const count = await insertImagesFromDevice(api);
       if (count > 0) {
         showNotice({
           kind: "info",
@@ -717,26 +849,22 @@ export default function App() {
       console.error("[whiteyboardy] could not add images", error);
       showNotice({ kind: "error", text: "Could not add that image." });
     }
-  }, [editor, showNotice]);
-
-  const handleInsertTable = useCallback(() => {
-    if (!editor) return;
-    insertTable(editor, editor.getViewportPageBounds().center, styleForNewShapes);
-    editor.focus();
-  }, [editor, styleForNewShapes]);
+  }, [api, showNotice]);
 
   // --- Export -------------------------------------------------------------
   const runExport = useCallback(
-    async (bounds?: Box) => {
-      if (!editor || !activeBoard) return;
+    async (region?: { x: number; y: number; width: number; height: number }) => {
+      if (!api || !activeBoard) return;
 
       setIsExporting(true);
       try {
         const outcome = await exportBoard({
-          editor,
+          elements: api.getSceneElements(),
+          files: api.getFiles(),
+          appState: api.getAppState(),
           format: exportFormat,
           boardName: activeBoard.name,
-          bounds,
+          ...(region ? { region } : {}),
         });
 
         if (outcome.status === "cancelled") return;
@@ -762,7 +890,7 @@ export default function App() {
         setIsExporting(false);
       }
     },
-    [editor, activeBoard, exportFormat, showNotice],
+    [api, activeBoard, exportFormat, showNotice],
   );
 
   const handleExportWholeBoard = useCallback(() => {
@@ -772,22 +900,39 @@ export default function App() {
   const handleCropComplete = useCallback(
     (rect: ScreenRect) => {
       setIsCropping(false);
-      if (!editor) return;
+      if (!api) return;
 
-      // Screen → page coordinates, then export exactly that region.
-      const start = editor.screenToPage({ x: rect.x1, y: rect.y1 });
-      const end = editor.screenToPage({ x: rect.x2, y: rect.y2 });
-      const bounds = new Box(
-        Math.min(start.x, end.x),
-        Math.min(start.y, end.y),
-        Math.abs(end.x - start.x),
-        Math.abs(end.y - start.y),
+      // Screen → scene coordinates, then export exactly that region.
+      const state = api.getAppState();
+      const start = viewportCoordsToSceneCoords(
+        { clientX: rect.x1, clientY: rect.y1 },
+        state,
+      );
+      const end = viewportCoordsToSceneCoords(
+        { clientX: rect.x2, clientY: rect.y2 },
+        state,
       );
 
-      void runExport(bounds);
+      void runExport({
+        x: Math.min(start.x, end.x),
+        y: Math.min(start.y, end.y),
+        width: Math.abs(end.x - start.x),
+        height: Math.abs(end.y - start.y),
+      });
     },
-    [editor, runExport],
+    [api, runExport],
   );
+
+  const canvasReady = loadedBoard !== null && loadedBoard.boardId === activeBoardId;
+  const penActive = activeToolId === "pen";
+  // What the pen previews with; committed paths read the refs instead so a
+  // style chosen mid-path still applies.
+  const penPreviewStyle: PenStyle = {
+    strokeColor: colorHex(strokeColor),
+    strokeWidth: strokeWidthFor(strokeSize),
+    fillStyle: fill === "none" ? "solid" : fill,
+    fillColor: fill === "none" ? null : fillBackgroundFor(fill, strokeColor),
+  };
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-neutral-100">
@@ -817,18 +962,62 @@ export default function App() {
         className="absolute inset-y-0 right-0 overflow-hidden transition-[left] duration-200 ease-out"
         style={{ left: sidebarOpen ? SIDEBAR_WIDTH : 0 }}
       >
-        <Tldraw
-          hideUi
-          autoFocus
-          shapeUtils={tableShapeUtils}
-          tools={penTools}
-          onMount={(next) => {
-            setEditor(next);
-            if (import.meta.env.DEV) {
-              (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
-            }
-          }}
-        />
+        <div
+          className={
+            penActive ? "wb-canvas wb-pen-active absolute inset-0" : "wb-canvas absolute inset-0"
+          }
+        >
+          {loadedBoard && loadedBoard.boardId === activeBoardId && (
+            <Excalidraw
+              key={loadedBoard.boardId}
+              initialData={loadedBoard.data}
+              autoFocus
+              // Our own chrome replaces Excalidraw's, so its shortcuts have to
+              // keep working while one of our buttons holds focus.
+              handleKeyboardGlobally
+              UIOptions={{
+                canvasActions: {
+                  loadScene: false,
+                  saveToActiveFile: false,
+                  saveAsImage: false,
+                  export: false,
+                  clearCanvas: false,
+                  changeViewBackgroundColor: false,
+                  toggleTheme: false,
+                },
+              }}
+              excalidrawAPI={(next) => {
+                setApi(next);
+                if (import.meta.env.DEV) {
+                  (
+                    window as unknown as { __wbApi?: ExcalidrawImperativeAPI }
+                  ).__wbApi = next;
+                }
+              }}
+              onChange={(elements, appState, files) => {
+                if (!canvasReady) return;
+                handleSceneChange(loadedBoard.boardId, elements, appState, files);
+              }}
+            />
+          )}
+
+          {penActive && (
+            <PenOverlay
+              api={api}
+              subscribe={pen.subscribe}
+              getDraft={pen.getDraft}
+              style={penPreviewStyle}
+            />
+          )}
+        </div>
+
+        {boardLoading && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <span className="text-[12px] font-medium text-neutral-400">
+              Opening board…
+            </span>
+          </div>
+        )}
       </main>
 
       <ExportBar
@@ -842,24 +1031,22 @@ export default function App() {
         onCancelSection={() => setIsCropping(false)}
       />
 
-      <ZoomHud visible={!zenMode} editor={editor} />
+      <ZoomHud visible={!zenMode} api={api} />
 
       <ToolDock
         visible={!zenMode}
+        disabled={!api || !canvasReady}
         activeToolId={activeToolId}
         shapeId={shapeId}
         color={strokeColor}
         size={strokeSize}
         fill={fill}
-        penSpline={penSpline}
         onSelectTool={handleSelectTool}
         onSelectShape={handleSelectShape}
         onSelectColor={handleSelectColor}
         onSelectSize={handleSelectSize}
         onSelectFill={handleSelectFill}
-        onSelectPenSpline={handleSelectPenSpline}
         onInsertImage={handleInsertImage}
-        onInsertTable={handleInsertTable}
         onToggle={() => setZenMode((zen) => !zen)}
       />
 
@@ -875,5 +1062,15 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
   );
 }

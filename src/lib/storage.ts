@@ -1,18 +1,27 @@
 import {
   BaseDirectory,
   exists,
-  mkdir,
   readTextFile,
   remove,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import type { TLEditorSnapshot } from "tldraw";
 
 /**
- * Everything tldraw needs to restore a board: the serialized document plus the
- * session state (camera, current page, …).
+ * One board's contents: an Excalidraw scene file, plus the editor state
+ * (`scene.ts` writes it) that Excalidraw's own serializer leaves out — the
+ * camera and the current pen style.
+ *
+ * The shape is declared loosely on purpose: `storage.ts` only has to store and
+ * return it, and the canvas engine re-validates it on load via `restore()`.
  */
-export type BoardSnapshot = TLEditorSnapshot;
+export interface BoardSceneFile {
+  type: "excalidraw";
+  version: number;
+  source: string;
+  elements: readonly unknown[];
+  appState: Record<string, unknown>;
+  files: Record<string, unknown>;
+}
 
 /** A single board inside the library. */
 export interface BoardIndexEntry {
@@ -46,18 +55,42 @@ export interface BoardLibrary {
  *     ├── board-<id>.json
  *     └── …
  *
- * When the app runs in a plain browser (`vite dev` preview) the same data is
- * mirrored into `localStorage` so the UI stays fully functional.
+ * Each `board-<id>.json` is an Excalidraw scene (see {@link BoardSceneFile}).
+ * Rust creates that directory at startup (`create_dir_all`); the webview's `fs`
+ * plugin cannot, because `mkdir(".")` resolves to a path with a trailing `.`
+ * component that `create_dir_all` handles incorrectly.
+ *
+ * When the app runs in a plain browser (`npm run dev`) — or when the app data
+ * directory turns out to be unusable at runtime — the same data is kept in
+ * `localStorage` instead, so the board library is never lost.
  */
 const APP_DATA_DIR = BaseDirectory.AppData;
 const INDEX_FILE_NAME = "boards-index.json";
 const INDEX_STORAGE_KEY = "whiteyboardy.boards-index";
+
+/** Written once and removed again to prove the file backend can really write. */
+const PROBE_FILE_NAME = "whiteyboardy-storage-probe.json";
+/**
+ * A storage call that never settles would hang the whole library load, so every
+ * file operation is given a deadline and falls back to `localStorage` after it.
+ */
+const STORAGE_TIMEOUT_MS = 3000;
 
 /** Bumped whenever the on-disk shape of `boards-index.json` changes. */
 const LIBRARY_VERSION = 3;
 
 const boardFileName = (boardId: string) => `board-${boardId}.json`;
 const boardStorageKey = (boardId: string) => `whiteyboardy.board.${boardId}`;
+
+/** Where the board library is being persisted right now. */
+export type StorageBackend = "files" | "browser";
+
+/** The outcome of choosing a storage backend, for the UI to report. */
+export interface StorageReport {
+  backend: StorageBackend;
+  /** Why the file backend was rejected, if it was. */
+  error: string | null;
+}
 
 /** Whether we are running inside the Tauri webview rather than a browser tab. */
 export function isTauriRuntime(): boolean {
@@ -68,21 +101,77 @@ export function isTauriRuntime(): boolean {
   );
 }
 
-let appDataDirReady: Promise<void> | null = null;
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Rejects when `promise` has not settled within `STORAGE_TIMEOUT_MS`. */
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} did not respond within ${STORAGE_TIMEOUT_MS} ms`));
+    }, STORAGE_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(describeError(error)));
+      },
+    );
+  });
+}
+
+let storageReport: StorageReport | null = null;
+let storageReportPromise: Promise<StorageReport> | null = null;
 
 /**
- * The app data directory is not created for us, so make sure it exists before
- * the first write. `"."` resolves to the directory itself and is covered by the
- * default `mkdir` scope for the application directories.
+ * Proves that the app data directory can be written to.
+ *
+ * No storage permission check is trustworthy until a real byte has landed on
+ * disk, so this writes (and removes) a probe file. If that fails — or simply
+ * never answers — the caller falls back to `localStorage`.
  */
-function ensureAppDataDir(): Promise<void> {
-  if (!isTauriRuntime()) return Promise.resolve();
-  if (!appDataDirReady) {
-    appDataDirReady = mkdir(".", { baseDir: APP_DATA_DIR, recursive: true }).catch(
-      () => undefined,
+async function probeFileBackend(): Promise<StorageReport> {
+  try {
+    await withTimeout(
+      writeTextFile(PROBE_FILE_NAME, "ok", { baseDir: APP_DATA_DIR }),
+      `writeTextFile(${PROBE_FILE_NAME})`,
     );
+    await remove(PROBE_FILE_NAME, { baseDir: APP_DATA_DIR }).catch(() => {});
+    return { backend: "files", error: null };
+  } catch (caught) {
+    const error = describeError(caught);
+    return { backend: "browser", error };
   }
-  return appDataDirReady;
+}
+
+/** Resolves (once) which backend this session writes to, and remembers it. */
+function resolveStorage(): Promise<StorageReport> {
+  if (!isTauriRuntime()) {
+    storageReport ??= { backend: "browser", error: null };
+    return Promise.resolve(storageReport);
+  }
+
+  storageReportPromise ??= probeFileBackend().then((report) => {
+    storageReport = report;
+    return report;
+  });
+
+  return storageReportPromise;
+}
+
+/**
+ * The storage backend in use, plus the reason the file backend was skipped.
+ *
+ * Reads wait for the backend probe, so this is safe to call as soon as the app
+ * has loaded.
+ */
+export function storageStatus(): Promise<StorageReport> {
+  return resolveStorage();
 }
 
 /** Stable, collision-free id for a new board or folder. */
@@ -136,20 +225,44 @@ function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry
   };
 }
 
-async function readJson<T>(fileName: string, storageKey: string): Promise<T | null> {
-  if (!isTauriRuntime()) {
-    const raw = window.localStorage.getItem(storageKey);
-    return raw ? (JSON.parse(raw) as T) : null;
+/** Reads a file (or its storage key) as text, without interpreting it. */
+async function readRawText(
+  fileName: string,
+  storageKey: string,
+): Promise<string | null> {
+  const { backend } = await resolveStorage();
+
+  if (backend === "browser") {
+    try {
+      return window.localStorage.getItem(storageKey);
+    } catch (error) {
+      console.warn(`[storage] could not read ${storageKey}`, error);
+      return null;
+    }
   }
 
-  await ensureAppDataDir();
-
   try {
-    if (!(await exists(fileName, { baseDir: APP_DATA_DIR }))) return null;
-    const raw = await readTextFile(fileName, { baseDir: APP_DATA_DIR });
-    return JSON.parse(raw) as T;
+    if (!(await withTimeout(exists(fileName, { baseDir: APP_DATA_DIR }), `exists(${fileName})`))) {
+      return null;
+    }
+    return await withTimeout(
+      readTextFile(fileName, { baseDir: APP_DATA_DIR }),
+      `readTextFile(${fileName})`,
+    );
   } catch (error) {
     console.warn(`[storage] could not read ${fileName}`, error);
+    return null;
+  }
+}
+
+async function readJson<T>(fileName: string, storageKey: string): Promise<T | null> {
+  const raw = await readRawText(fileName, storageKey);
+  if (raw === null || raw.trim() === "") return null;
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.warn(`[storage] could not parse ${fileName}`, error);
     return null;
   }
 }
@@ -160,27 +273,49 @@ async function writeJson(
   value: unknown,
 ): Promise<void> {
   const serialized = JSON.stringify(value, null, 2);
+  const { backend } = await resolveStorage();
 
-  if (!isTauriRuntime()) {
+  if (backend === "browser") {
     window.localStorage.setItem(storageKey, serialized);
     return;
   }
 
-  await ensureAppDataDir();
-  await writeTextFile(fileName, serialized, { baseDir: APP_DATA_DIR });
+  await withTimeout(
+    writeTextFile(fileName, serialized, { baseDir: APP_DATA_DIR }),
+    `writeTextFile(${fileName})`,
+  );
+}
+
+/** Writes raw text (no re-serialization) to a file or its storage key. */
+async function writeRaw(
+  fileName: string,
+  storageKey: string,
+  raw: string,
+): Promise<void> {
+  const { backend } = await resolveStorage();
+
+  if (backend === "browser") {
+    window.localStorage.setItem(storageKey, raw);
+    return;
+  }
+
+  await withTimeout(
+    writeTextFile(fileName, raw, { baseDir: APP_DATA_DIR }),
+    `writeTextFile(${fileName})`,
+  );
 }
 
 async function deleteFile(fileName: string, storageKey: string): Promise<void> {
-  if (!isTauriRuntime()) {
+  const { backend } = await resolveStorage();
+
+  if (backend === "browser") {
     window.localStorage.removeItem(storageKey);
     return;
   }
 
-  await ensureAppDataDir();
-
   try {
-    if (await exists(fileName, { baseDir: APP_DATA_DIR })) {
-      await remove(fileName, { baseDir: APP_DATA_DIR });
+    if (await withTimeout(exists(fileName, { baseDir: APP_DATA_DIR }), `exists(${fileName})`)) {
+      await withTimeout(remove(fileName, { baseDir: APP_DATA_DIR }), `remove(${fileName})`);
     }
   } catch (error) {
     console.warn(`[storage] could not delete ${fileName}`, error);
@@ -228,24 +363,89 @@ export async function saveLibrary(library: BoardLibrary): Promise<void> {
   });
 }
 
-/** Loads a board's tldraw snapshot, or `null` for a board that has no data yet. */
-export async function loadBoardSnapshot(
-  boardId: string,
-): Promise<BoardSnapshot | null> {
-  const raw = await readJson<BoardSnapshot>(boardFileName(boardId), boardStorageKey(boardId));
-  if (!raw || typeof raw !== "object" || !("document" in raw)) return null;
-  return raw;
+/**
+ * Keeps a copy of a board file this build cannot read, under a clearly labelled
+ * name, before returning an empty board for it.
+ *
+ * Boards written before the canvas engine changed are tldraw snapshots. They
+ * cannot be drawn any more, but that is no reason to destroy them: without this
+ * the empty board the user sees would be autosaved over the original within a
+ * second of opening it.
+ */
+async function backupLegacyBoard(boardId: string, raw: string): Promise<void> {
+  const backupName = `board-${boardId}.legacy-tldraw.json`;
+  const backupKey = `${boardStorageKey(boardId)}.legacy-tldraw`;
+
+  try {
+    await writeRaw(backupName, backupKey, raw);
+    console.warn(`[storage] kept a copy of the older tldraw board as ${backupName}`);
+  } catch (error) {
+    console.warn(`[storage] could not back up ${backupName}`, error);
+  }
 }
 
-/** Writes a board's tldraw snapshot to disk. */
-export async function saveBoardSnapshot(
-  boardId: string,
-  snapshot: BoardSnapshot,
-): Promise<void> {
-  await writeJson(boardFileName(boardId), boardStorageKey(boardId), snapshot);
+/**
+ * Loads a board's scene, or `null` for a board that has no data yet.
+ *
+ * Anything that is not an Excalidraw scene is ignored — including the tldraw
+ * snapshots (`{ document, session }`) older builds wrote — so a stale file can
+ * never make the canvas throw. Those snapshots are copied aside first, so the
+ * original bytes survive the empty board being saved over them.
+ */
+export async function loadBoardScene(boardId: string): Promise<BoardSceneFile | null> {
+  const fileName = boardFileName(boardId);
+  const raw = await readRawText(fileName, boardStorageKey(boardId));
+  if (raw === null || raw.trim() === "") return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.warn(`[storage] ${fileName} is not valid JSON`, error);
+    await backupLegacyBoard(boardId, raw);
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    await backupLegacyBoard(boardId, raw);
+    return null;
+  }
+
+  const candidate = parsed as Partial<BoardSceneFile>;
+  if (candidate.type !== "excalidraw" || !Array.isArray(candidate.elements)) {
+    console.warn(`[storage] ignoring ${fileName}: not an Excalidraw scene`);
+    await backupLegacyBoard(boardId, raw);
+    return null;
+  }
+
+  return {
+    type: "excalidraw",
+    version: typeof candidate.version === "number" ? candidate.version : 2,
+    source: typeof candidate.source === "string" ? candidate.source : "whiteyboardy",
+    elements: candidate.elements,
+    appState:
+      typeof candidate.appState === "object" && candidate.appState !== null
+        ? (candidate.appState as Record<string, unknown>)
+        : {},
+    files:
+      typeof candidate.files === "object" && candidate.files !== null
+        ? (candidate.files as Record<string, unknown>)
+        : {},
+  };
 }
 
-/** Removes a board's snapshot from disk. */
-export async function deleteBoardSnapshot(boardId: string): Promise<void> {
+/**
+ * Writes a board's scene.
+ *
+ * The scene arrives already serialized: it can hold megabytes of image data, so
+ * round-tripping it through `JSON.parse`/`JSON.stringify` just to pretty-print it
+ * would be wasted work.
+ */
+export async function saveBoardScene(boardId: string, sceneJson: string): Promise<void> {
+  await writeRaw(boardFileName(boardId), boardStorageKey(boardId), sceneJson);
+}
+
+/** Removes a board's scene from disk. */
+export async function deleteBoardScene(boardId: string): Promise<void> {
   await deleteFile(boardFileName(boardId), boardStorageKey(boardId));
 }
