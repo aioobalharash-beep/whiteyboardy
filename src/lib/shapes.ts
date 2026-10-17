@@ -259,7 +259,10 @@ export function insertGeneratedShape(
   // cloud with tldraw's own helper to stay compatible with the shape schema.
   const [segment] = compressLegacySegments([{ type: "free", points }]);
 
-  const shape = editor.createShape({
+  const shapeId = createShapeId();
+
+  editor.createShape({
+    id: shapeId,
     type: "draw",
     x: center.x - width / 2,
     y: center.y - height / 2,
@@ -278,7 +281,7 @@ export function insertGeneratedShape(
     },
   });
 
-  editor.setSelectedShapes([shape.id]);
+  editor.setSelectedShapes([shapeId]);
   editor.setCurrentTool("select");
-  return shape;
+  return shapeId;
 }
