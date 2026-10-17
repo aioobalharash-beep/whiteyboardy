@@ -286,7 +286,7 @@ function TableComponent({ shape, editor }: { shape: TLTableShape; editor: Editor
   );
 }
 
-export class TableShapeUtil extends BaseBoxShapeUtil<TLTableShape> {
+export class TableShapeUtil extends ShapeUtil<TLTableShape> {
   static override type = TABLE_SHAPE_TYPE;
 
   static override props: RecordProps<TLTableShape> = {
@@ -317,12 +317,31 @@ export class TableShapeUtil extends BaseBoxShapeUtil<TLTableShape> {
     };
   }
 
-  override component(shape: TLTableShape) {
-    return <TableComponent shape={shape} editor={this.editor} />;
+  override getGeometry(shape: TLTableShape) {
+    return new Rectangle2d({
+      width: shape.props.w,
+      height: shape.props.h,
+      isFilled: true,
+    });
   }
 
-  override indicator(shape: TLTableShape) {
-    return <rect width={shape.props.w} height={shape.props.h} rx={6} />;
+  override getIndicatorPath(shape: TLTableShape) {
+    const path = new Path2D();
+    path.rect(0, 0, shape.props.w, shape.props.h);
+    return path;
+  }
+
+  override onResize(shape: TLTableShape, info: TLResizeInfo<TLTableShape>) {
+    return {
+      props: {
+        w: Math.max(120, info.initialBounds.width * info.scaleX),
+        h: Math.max(44, info.initialBounds.height * info.scaleY),
+      },
+    };
+  }
+
+  override component(shape: TLTableShape) {
+    return <TableComponent shape={shape} editor={this.editor} />;
   }
 
   override toSvg(shape: TLTableShape, ctx: SvgExportContext) {
