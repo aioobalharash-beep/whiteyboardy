@@ -386,6 +386,11 @@ export default function App() {
     return editor.store.listen(sync, { scope: "session", source: "all" });
   }, [editor]);
 
+  // --- Keep the pen tool's segment style in sync with the dock -----------
+  useEffect(() => {
+    penConfig.spline = penSpline;
+  }, [penSpline]);
+
   // --- Global shortcuts ---------------------------------------------------
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -411,12 +416,23 @@ export default function App() {
         event.preventDefault();
         event.stopPropagation();
         setSidebarOpen((open) => !open);
+        return;
+      }
+
+      if (!editor) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      const toolId = TOOL_SHORTCUTS[event.key.toLowerCase()];
+      if (toolId) {
+        event.preventDefault();
+        editor.setCurrentTool(toolId);
+        editor.focus();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [isCropping]);
+  }, [isCropping, editor]);
 
   // --- Board actions ------------------------------------------------------
   const handleCreateBoard = useCallback(
