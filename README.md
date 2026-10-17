@@ -81,13 +81,14 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 - **Collapsible sidebar** with `pt-10` breathing room for the traffic lights.
   Toggle with the header button or **`⌘ + \`**; a small floating button at the
   top-left reopens it.
-- **Collapsible bottom tool dock**: Select, Pencil (freehand), Line, Eraser,
+- **Collapsible bottom tool dock**: Select, Pencil (freehand), Pen, Line, Eraser,
   Arrow and Text, plus a shape picker, a stroke colour/thickness/fill popover,
   image insertion and the Zen toggle. Excalidraw's own shortcuts (`V`, `P`, `L`,
-  `E`, `A`, `T`, `R`, `O`, `D`, `1`–`9`) work anywhere in the app, and the dock
-  highlights whatever tool is active — including when you pick a tool with the
-  keyboard or select an existing element. Toggle the dock (Zen mode) with the eye
-  button or **`Tab`** for a 100 % unobstructed canvas.
+  `E`, `A`, `T`, `R`, `O`, `D`, `1`–`9`) work anywhere in the app — and `N` picks
+  the Pen, which is the app's own tool — and the dock highlights whatever tool is
+  active, including when you pick a tool with the keyboard or select an existing
+  element. Toggle the dock (Zen mode) with the eye button or **`Tab`** for a
+  100 % unobstructed canvas.
 - **Zoom HUD** in the bottom-right corner: zoom out, a live zoom percentage that
   resets to 100 %, zoom in, **fit everything on the board**, and **jump to the
   current selection**. Zooming keeps whatever is in the middle of the viewport in
