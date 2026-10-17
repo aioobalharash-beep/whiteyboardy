@@ -538,7 +538,10 @@ export default function App() {
       if (!confirmed) return;
 
       const isActiveBoard = boardId === activeBoardIdRef.current;
-      if (isActiveBoard) autosaveRef.current.cancel();
+      if (isActiveBoard) {
+        autosaveRef.current.cancel();
+        settleTransientTool();
+      }
 
       const remaining = boards.filter((entry) => entry.id !== boardId);
       setBoards(remaining);
