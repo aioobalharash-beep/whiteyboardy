@@ -136,9 +136,16 @@ export function ToolDock({
     if (!visible) setPanel("none");
   }, [visible]);
 
-  // The pen options only make sense while the pen is the active tool.
+  // The pen options only make sense while the pen is the active tool. Comparing
+  // against the *previous* tool avoids racing the async tool sync, which would
+  // otherwise close the panel the moment the pen button is clicked.
+  const previousToolRef = useRef(activeToolId);
   useEffect(() => {
-    if (panel === "pen" && activeToolId !== PEN_TOOL_ID) setPanel("none");
+    const previous = previousToolRef.current;
+    previousToolRef.current = activeToolId;
+    if (panel === "pen" && previous === PEN_TOOL_ID && activeToolId !== PEN_TOOL_ID) {
+      setPanel("none");
+    }
   }, [panel, activeToolId]);
 
   if (!visible) {
