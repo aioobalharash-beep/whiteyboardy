@@ -203,6 +203,14 @@ published 0.18.1 build):
 - A custom type is not part of Excalidraw's `ToolType`, so the dock's
   `DockToolId` gained `"pen"` and `syncDock` maps the engine's active tool back
   to it.
+- A linear element has to be **normalised**: its `points[0]` must be `[0, 0]`
+  with the element's `x`/`y` on that first point. Excalidraw logs
+  `Linear element is not normalized` when its point editor meets an element that
+  is not, and re-writes such elements the next time the board is loaded. Both the
+  pen and the generated shapes now write elements in that form
+  (`rebaseOnFirstPoint` in `shapes.ts`). The consequence for geometry code is
+  that `x`/`y` is the element's *first point*, not the corner of its box — the
+  bounding box has to be taken from the points.
 
 The interaction: click to place an anchor; drag while placing one to bend the
 segment through it (symmetric handles, or `Option` to break the incoming side
