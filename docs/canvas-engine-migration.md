@@ -276,7 +276,32 @@ synthetic pointer and real key input against the live engine):
   tool returned to selection with `locked: false`;
 - `⌘`-double-clicking a pen path entered Excalidraw's own point editing
   (`editingLinearElement.elementId` matched), so pen output stays fully editable;
-- no console errors or warnings over the whole session.
+- every linear element the app writes comes out normalised (`points[0] === [0,0]`
+  with `x`/`y` on that point): the generated shapes still land exactly on the
+  viewport centre (a half circle's absolute box centre read back as (372, 350) on
+  a 744×700 canvas) and still fill (64,772 red pixels), and a closed pen path
+  committed 5 points with the first repeated, the dock's `#e03131` solid fill and
+  84,072 red pixels on the static canvas. Point-editing a pen path no longer
+  makes the engine log `Linear element is not normalized`;
+- no console errors or warnings over the whole session (the only warning seen was
+  Chrome's note about repeated `getImageData` calls, which came from the harness's
+  own pixel sampling).
+
+**Verified in the packaged app** (`npm run tauri build`, `WhiteyBoardy.app`
+launched from the bundle, app data in
+`~/Library/Application Support/com.whiteyboardy.app/`):
+
+- a seeded board holding exactly what the pen produces — a 9-point closed `line`
+  with its first point repeated, `#e03131` solid fill, `roughness: 0`,
+  `roundness: null` — plus camera (`zoom 1.5`, `scrollX -40`, `scrollY -25`) and
+  pen style (`#1971c2`, `hachure`, width 4) loaded and was written back with the
+  absolute geometry identical point for point, the fill, stroke, camera and style
+  preserved, and the library index unchanged;
+- pressing `N` in the shipped bundle activates the same custom tool the dev
+  harness drives (both were checked with the same in-page assertions);
+- deleting a board's file and launching the app recreated the very scene the app
+  writes for a board with no file, and the app data directory was left exactly as
+  it was found.
 
 ### Still owed
 
