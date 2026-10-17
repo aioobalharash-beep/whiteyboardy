@@ -36,14 +36,24 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 - When running in a plain browser (`npm run dev`), storage transparently falls
   back to `localStorage` so the whole UI keeps working.
 
-### Folders and board organisation
+### Folders, pinning and drag-and-drop organisation
 - The sidebar groups boards into **collapsible folders**, with an **Unfiled**
-  section for everything at the top level and per-folder board counts.
-- Create a folder from the sidebar header or straight from a board's organise
-  menu ("New folder…", which moves that board straight in).
-- Boards can be moved between folders from the per-board organise (⋯) menu,
-  renamed by double-clicking, and folders renamed/deleted the same way. Deleting a
-  folder keeps its boards and moves them back out to the top level.
+  section for everything at the top level and per-folder board counts. New folders
+  come from the sidebar header or from a board's organise menu ("New folder…",
+  which moves that board straight in).
+- **Drag and drop** a board to reorder it, or drop it onto a folder header, into a
+  folder's body, onto the **Pinned** section, or onto the Unfiled area to move it
+  there. A drop indicator shows exactly where the board will land, and the
+  library's array order *is* the sidebar order (groups filter it without
+  reshuffling).
+- **Pin** a board with the pin button on its row (or by dragging it onto the
+  Pinned section) to lift it into a **Pinned** section at the very top. Pinned
+  boards remember their folder, so unpinning puts them straight back. While a
+  board is pinned it is listed only in the Pinned section — its folder shows
+  "All boards pinned" — and dropping a board into a folder unpins it.
+- Boards can also be moved with the organise (⋯) menu, renamed by double-clicking,
+  and folders renamed/deleted the same way. Deleting a folder keeps its boards and
+  moves them back out to the top level.
 
 ### Minimal macOS UI
 - Translucent frosted-glass panels (`bg-white/85 backdrop-blur-xl`), hairline
