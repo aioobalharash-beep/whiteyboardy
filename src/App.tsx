@@ -739,6 +739,11 @@ export default function App() {
   const handleSelectTool = useCallback(
     (toolId: DockToolId) => {
       if (!api) return;
+      // The pen is a custom tool: Excalidraw only knows its host-side type.
+      if (toolId === "pen") {
+        api.setActiveTool({ type: "custom", customType: PEN_CUSTOM_TYPE });
+        return;
+      }
       api.setActiveTool({ type: toolId });
     },
     [api],
