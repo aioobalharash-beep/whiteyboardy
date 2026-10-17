@@ -7,9 +7,9 @@ import {
 } from "@tauri-apps/plugin-fs";
 
 /**
- * One board's contents, exactly as Excalidraw's `serializeAsJSON` writes it: the
- * scene elements, the editor state (camera, styles, view background) and any
- * image binaries the board references.
+ * One board's contents: an Excalidraw scene file, plus the editor state
+ * (`scene.ts` writes it) that Excalidraw's own serializer leaves out — the
+ * camera and the current pen style.
  *
  * The shape is declared loosely on purpose: `storage.ts` only has to store and
  * return it, and the canvas engine re-validates it on load via `restore()`.
