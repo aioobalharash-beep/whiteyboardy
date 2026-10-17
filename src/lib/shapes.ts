@@ -90,7 +90,11 @@ function fitToSize(points: Point[], size: number): Point[] {
 }
 
 /** Shifts a point cloud so its bounding box starts at the origin. */
-function normalise(points: Point[]): { points: Point[]; width: number; height: number } {
+export function normalise(points: Point[]): {
+  points: Point[];
+  width: number;
+  height: number;
+} {
   const minX = Math.min(...points.map((point) => point.x));
   const minY = Math.min(...points.map((point) => point.y));
   const shifted = points.map((point) => ({ x: point.x - minX, y: point.y - minY }));
