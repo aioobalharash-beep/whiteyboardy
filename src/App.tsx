@@ -137,7 +137,7 @@ export default function App() {
    * that no longer exists.
    */
   const licenseGated = useEditorLicenseGate();
-  const licenseKeyMissing = licenseKeyMissingInProduction();
+  const licenseWillGate = willEditorBeGated();
   const editor = licenseGated ? null : rawEditor;
 
   const activeBoardIdRef = useRef<string | null>(null);
