@@ -60,6 +60,8 @@ class PenDrawing extends StateNode {
   /** The rubber-band point that trails the pointer until the next click. */
   private pending: PenPoint | null = null;
   private hoveringStart = false;
+  /** History mark opened on the first click and squashed when the path ends. */
+  private startMarkId: string | null = null;
 
   override onEnter() {
     this.editor.setCursor({ type: "cross", rotation: 0 });
