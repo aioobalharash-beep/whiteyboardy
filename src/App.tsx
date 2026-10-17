@@ -867,6 +867,8 @@ export default function App() {
           tools={penTools}
           onMount={(next) => {
             setRawEditor(next);
+            // TEMPORARY SELFTEST — remove with src/lib/selftest.ts
+            void import("./lib/selftest").then((m) => m.runSelfTest(next));
             if (import.meta.env.DEV) {
               (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
             }
