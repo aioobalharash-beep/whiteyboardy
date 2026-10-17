@@ -740,9 +740,15 @@ export default function App() {
   const handleSelectTool = useCallback(
     (toolId: DockToolId) => {
       if (!api) return;
-      // The pen is a custom tool: Excalidraw only knows its host-side type.
+      // The pen is a custom tool: Excalidraw only knows its host-side type. It
+      // is activated *locked*, otherwise the engine hands the canvas back to
+      // the selection tool after every single click.
       if (toolId === "pen") {
-        api.setActiveTool({ type: "custom", customType: PEN_CUSTOM_TYPE });
+        api.setActiveTool({
+          type: "custom",
+          customType: PEN_CUSTOM_TYPE,
+          locked: true,
+        });
         return;
       }
       api.setActiveTool({ type: toolId });
