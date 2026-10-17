@@ -202,7 +202,9 @@ export function ToolDock({
                     }}
                     title={
                       option.tool
-                        ? `${option.label} — drag on the canvas`
+                        ? `${option.label}${
+                            option.shortcut ? ` (${option.shortcut})` : ""
+                          } — drag on the canvas`
                         : `${option.label} — click to place on the canvas`
                     }
                     aria-label={option.label}
