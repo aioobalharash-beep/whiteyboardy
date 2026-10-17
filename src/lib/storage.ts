@@ -54,7 +54,7 @@ const INDEX_FILE_NAME = "boards-index.json";
 const INDEX_STORAGE_KEY = "whiteyboardy.boards-index";
 
 /** Bumped whenever the on-disk shape of `boards-index.json` changes. */
-const LIBRARY_VERSION = 2;
+const LIBRARY_VERSION = 3;
 
 const boardFileName = (boardId: string) => `board-${boardId}.json`;
 const boardStorageKey = (boardId: string) => `whiteyboardy.board.${boardId}`;
