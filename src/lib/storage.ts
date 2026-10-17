@@ -272,6 +272,25 @@ async function writeJson(
   );
 }
 
+/** Writes raw text (no re-serialization) to a file or its storage key. */
+async function writeRaw(
+  fileName: string,
+  storageKey: string,
+  raw: string,
+): Promise<void> {
+  const { backend } = await resolveStorage();
+
+  if (backend === "browser") {
+    window.localStorage.setItem(storageKey, raw);
+    return;
+  }
+
+  await withTimeout(
+    writeTextFile(fileName, raw, { baseDir: APP_DATA_DIR }),
+    `writeTextFile(${fileName})`,
+  );
+}
+
 async function deleteFile(fileName: string, storageKey: string): Promise<void> {
   const { backend } = await resolveStorage();
 
