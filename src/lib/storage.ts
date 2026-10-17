@@ -5,13 +5,23 @@ import {
   remove,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import type { TLEditorSnapshot } from "tldraw";
 
 /**
- * Everything tldraw needs to restore a board: the serialized document plus the
- * session state (camera, current page, …).
+ * One board's contents, exactly as Excalidraw's `serializeAsJSON` writes it: the
+ * scene elements, the editor state (camera, styles, view background) and any
+ * image binaries the board references.
+ *
+ * The shape is declared loosely on purpose: `storage.ts` only has to store and
+ * return it, and the canvas engine re-validates it on load via `restore()`.
  */
-export type BoardSnapshot = TLEditorSnapshot;
+export interface BoardSceneFile {
+  type: "excalidraw";
+  version: number;
+  source: string;
+  elements: readonly unknown[];
+  appState: Record<string, unknown>;
+  files: Record<string, unknown>;
+}
 
 /** A single board inside the library. */
 export interface BoardIndexEntry {
