@@ -25,7 +25,8 @@ interface BoardSidebarProps {
   onRenameBoard: (boardId: string, name: string) => void;
   onDeleteBoard: (boardId: string) => void;
   onMoveBoard: (boardId: string, folderId: string | null) => void;
-  onCreateFolder: () => void;
+  /** Creates a folder, optionally moving one board into it straight away. */
+  onCreateFolder: (moveBoardId?: string) => void;
   onRenameFolder: (folderId: string, name: string) => void;
   onDeleteFolder: (folderId: string) => void;
 }
