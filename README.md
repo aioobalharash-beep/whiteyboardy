@@ -158,6 +158,12 @@ npm run build          # type-check + production frontend build
 npm run tauri build    # bundled .app / .dmg
 ```
 
+> **Before `npm run tauri build`:** tldraw v5 hides its whole editor five seconds
+> after launch in a **production** build that has no valid licence key (see
+> [Licensing](#licensing-note)). Copy `.env.example` to `.env`, set
+> `VITE_TLDRAW_LICENSE_KEY=…`, and rebuild. Development runs
+> (`npm run tauri dev`, `npm run dev`) never need a key.
+
 ## Project layout
 
 ```
