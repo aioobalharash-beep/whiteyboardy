@@ -950,7 +950,11 @@ export default function App() {
         className="absolute inset-y-0 right-0 overflow-hidden transition-[left] duration-200 ease-out"
         style={{ left: sidebarOpen ? SIDEBAR_WIDTH : 0 }}
       >
-        <div className="wb-canvas absolute inset-0">
+        <div
+          className={
+            penActive ? "wb-canvas wb-pen-active absolute inset-0" : "wb-canvas absolute inset-0"
+          }
+        >
           {loadedBoard && loadedBoard.boardId === activeBoardId && (
             <Excalidraw
               key={loadedBoard.boardId}
