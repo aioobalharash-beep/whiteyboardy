@@ -79,15 +79,6 @@ function naturalSize(dataUrl: string): Promise<{ width: number; height: number }
   });
 }
 
-/** The scene point at the middle of the visible canvas. */
-function viewportCentre(api: ExcalidrawImperativeAPI): { x: number; y: number } {
-  const { width, height, scrollX, scrollY, zoom } = api.getAppState();
-  return {
-    x: (width / 2 - scrollX) / zoom.value,
-    y: (height / 2 - scrollY) / zoom.value,
-  };
-}
-
 /**
  * Adds image files to the board, cascaded around the middle of the viewport.
  *
