@@ -6,21 +6,29 @@ import {
   ImagePlus,
   MousePointer2,
   Pencil,
-  PenTool as PenToolIcon,
   Shapes,
-  Table as TableIcon,
   Type,
 } from "lucide-react";
 import {
   BOARD_COLORS,
+  BOARD_FILLS,
   BOARD_SIZES,
   colorHex,
   type BoardColorName,
+  type BoardFillName,
   type BoardSizeName,
 } from "../lib/palette";
-import { FILL_OPTIONS, SHAPE_CATALOG, findShapeOption, type ShapeOption } from "../lib/shapes";
-import { PEN_TOOL_ID, type PenSpline } from "../tools/PenTool";
-import type { TLDefaultFillStyle } from "tldraw";
+import { SHAPE_CATALOG, findShapeOption, type ShapeOption } from "../lib/shapes";
+
+/** Excalidraw's tool ids, which the dock drives through `setActiveTool`. */
+const SELECT_TOOL = "selection";
+const FREEDRAW_TOOL = "freedraw";
+const ERASER_TOOL = "eraser";
+const ARROW_TOOL = "arrow";
+const TEXT_TOOL = "text";
+
+/** Every tool that draws one of the shapes in the shapes panel. */
+const SHAPE_TOOLS = ["rectangle", "ellipse", "diamond"];
 
 interface DockTool {
   id: string;
@@ -30,18 +38,11 @@ interface DockTool {
 }
 
 const DOCK_TOOLS: DockTool[] = [
-  { id: "select", label: "Select", shortcut: "V", icon: MousePointer2 },
-  { id: "draw", label: "Pencil (freehand)", shortcut: "D", icon: Pencil },
-  { id: PEN_TOOL_ID, label: "Pen (lines)", shortcut: "P", icon: PenToolIcon },
-  { id: "eraser", label: "Eraser", shortcut: "E", icon: Eraser },
-  { id: "arrow", label: "Arrow", shortcut: "A", icon: ArrowUpRight },
-  { id: "text", label: "Text", shortcut: "T", icon: Type },
-];
-
-/** The pen draws straight segments or a smooth curve through its anchors. */
-const PEN_SPLINES: { id: PenSpline; label: string }[] = [
-  { id: "line", label: "Straight" },
-  { id: "cubic", label: "Smooth" },
+  { id: SELECT_TOOL, label: "Select", shortcut: "V", icon: MousePointer2 },
+  { id: FREEDRAW_TOOL, label: "Pencil (freehand)", shortcut: "D", icon: Pencil },
+  { id: ERASER_TOOL, label: "Eraser", shortcut: "E", icon: Eraser },
+  { id: ARROW_TOOL, label: "Arrow", shortcut: "A", icon: ArrowUpRight },
+  { id: TEXT_TOOL, label: "Text", shortcut: "T", icon: Type },
 ];
 
 interface ToolDockProps {
@@ -50,17 +51,14 @@ interface ToolDockProps {
   shapeId: string;
   color: BoardColorName;
   size: BoardSizeName;
-  fill: TLDefaultFillStyle;
-  penSpline: PenSpline;
+  fill: BoardFillName;
   disabled?: boolean;
   onSelectTool: (toolId: string) => void;
   onSelectShape: (shapeId: string) => void;
   onSelectColor: (color: BoardColorName) => void;
   onSelectSize: (size: BoardSizeName) => void;
-  onSelectFill: (fill: TLDefaultFillStyle) => void;
-  onSelectPenSpline: (spline: PenSpline) => void;
+  onSelectFill: (fill: BoardFillName) => void;
   onInsertImage: () => void;
-  onInsertTable: () => void;
   onToggle: () => void;
 }
 
@@ -81,20 +79,18 @@ function ShapePreview({ d, className }: { d: string; className?: string }) {
   );
 }
 
-/** A small square that visually matches one of tldraw's fill styles. */
-function FillSwatch({ fill, hex }: { fill: TLDefaultFillStyle; hex: string }) {
+/** A small square that visually matches one of Excalidraw's fill styles. */
+function FillSwatch({ fill, hex }: { fill: BoardFillName; hex: string }) {
   if (fill === "none") {
     return (
       <span className="h-4 w-4 rounded-[4px] border border-dashed border-neutral-400" />
     );
   }
-  if (fill === "pattern") {
+  if (fill === "solid") {
     return (
       <span
         className="h-4 w-4 rounded-[4px] border border-neutral-300"
-        style={{
-          backgroundImage: `repeating-linear-gradient(45deg, ${hex} 0 2px, transparent 2px 4px)`,
-        }}
+        style={{ backgroundColor: hex }}
       />
     );
   }
@@ -102,8 +98,9 @@ function FillSwatch({ fill, hex }: { fill: TLDefaultFillStyle; hex: string }) {
     <span
       className="h-4 w-4 rounded-[4px] border border-neutral-300"
       style={{
-        backgroundColor: hex,
-        opacity: fill === "semi" ? 0.5 : 1,
+        backgroundImage: `repeating-linear-gradient(${
+          fill === "cross-hatch" ? "45deg" : "-45deg"
+        }, ${hex} 0 2px, transparent 2px 4px)`,
       }}
     />
   );
@@ -116,19 +113,16 @@ export function ToolDock({
   color,
   size,
   fill,
-  penSpline,
   disabled = false,
   onSelectTool,
   onSelectShape,
   onSelectColor,
   onSelectSize,
   onSelectFill,
-  onSelectPenSpline,
   onInsertImage,
-  onInsertTable,
   onToggle,
 }: ToolDockProps) {
-  const [panel, setPanel] = useState<"none" | "shapes" | "style" | "pen">("none");
+  const [panel, setPanel] = useState<"none" | "shapes" | "style">("none");
   const currentShape: ShapeOption = findShapeOption(shapeId);
 
   // A collapsed dock is Zen mode, so always drop any open popover with it.
@@ -136,14 +130,14 @@ export function ToolDock({
     if (!visible) setPanel("none");
   }, [visible]);
 
-  // The pen options only make sense while the pen is the active tool. Comparing
-  // against the *previous* tool avoids racing the async tool sync, which would
-  // otherwise close the panel the moment the pen button is clicked.
+  // Close the shapes panel once another tool becomes active. Comparing against
+  // the *previous* tool avoids racing the async tool sync, which would
+  // otherwise close the panel the moment a shape button is clicked.
   const previousToolRef = useRef(activeToolId);
   useEffect(() => {
     const previous = previousToolRef.current;
     previousToolRef.current = activeToolId;
-    if (panel === "pen" && previous === PEN_TOOL_ID && activeToolId !== PEN_TOOL_ID) {
+    if (panel === "shapes" && SHAPE_TOOLS.includes(previous) && !SHAPE_TOOLS.includes(activeToolId)) {
       setPanel("none");
     }
   }, [panel, activeToolId]);
@@ -175,64 +169,6 @@ export function ToolDock({
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
       <div className="pointer-events-auto relative">
-        {panel === "pen" && (
-          <div className="wb-animate-in absolute bottom-full left-1/2 mb-3 w-72 -translate-x-1/2 rounded-2xl border border-neutral-200/80 bg-white/90 p-3 shadow-xl shadow-neutral-900/10 backdrop-blur-xl">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-medium tracking-wider text-neutral-400 uppercase">
-                Pen
-              </span>
-              <span className="text-[11px] text-neutral-400">Click to add points</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {PEN_SPLINES.map((option) => {
-                const isActive = option.id === penSpline;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => onSelectPenSpline(option.id)}
-                    title={
-                      option.id === "line"
-                        ? "Straight segments between the points"
-                        : "Smooth curve through the points"
-                    }
-                    aria-label={`${option.label} pen path`}
-                    aria-pressed={isActive}
-                    className={`flex h-9 items-center justify-center gap-1.5 rounded-xl text-[12px] transition-colors ${
-                      isActive
-                        ? "bg-neutral-900 text-white"
-                        : "text-neutral-600 hover:bg-neutral-900/5 hover:text-neutral-900"
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={1.6}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      {option.id === "line" ? (
-                        <path d="M4 19 12 6l8 13" />
-                      ) : (
-                        <path d="M4 18c4-13 12-13 16 0" />
-                      )}
-                    </svg>
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <ul className="mt-3 space-y-1 text-[11px] leading-relaxed text-neutral-400">
-              <li>Click the canvas to drop anchor points.</li>
-              <li>Click the first point to close the path.</li>
-              <li>Enter or double-click finishes · ⌫ drops a point · Esc cancels.</li>
-            </ul>
-          </div>
-        )}
-
         {panel === "shapes" && (
           <div className="wb-animate-in absolute bottom-full left-1/2 mb-3 w-[262px] -translate-x-1/2 rounded-2xl border border-neutral-200/80 bg-white/90 p-3 shadow-xl shadow-neutral-900/10 backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between">
@@ -250,12 +186,12 @@ export function ToolDock({
                     type="button"
                     onClick={() => {
                       onSelectShape(option.id);
-                      if (option.clickToPlace) setPanel("none");
+                      if (!option.tool) setPanel("none");
                     }}
                     title={
-                      option.clickToPlace
-                        ? `${option.label} — click to place on the canvas`
-                        : `${option.label} — drag on the canvas`
+                      option.tool
+                        ? `${option.label} — drag on the canvas`
+                        : `${option.label} — click to place on the canvas`
                     }
                     aria-label={option.label}
                     aria-pressed={isActive}
@@ -338,7 +274,7 @@ export function ToolDock({
               Fill
             </div>
             <div className="flex items-center gap-1.5">
-              {FILL_OPTIONS.map((option) => {
+              {BOARD_FILLS.map((option) => {
                 const isActive = option.name === fill;
                 return (
                   <button
@@ -371,13 +307,7 @@ export function ToolDock({
                 key={tool.id}
                 type="button"
                 disabled={disabled}
-                onClick={() => {
-                  onSelectTool(tool.id);
-                  // The pen has options, so clicking it also reveals them.
-                  if (tool.id === PEN_TOOL_ID) {
-                    setPanel((open) => (open === "pen" ? "none" : "pen"));
-                  }
-                }}
+                onClick={() => onSelectTool(tool.id)}
                 title={`${tool.label} (${tool.shortcut})`}
                 aria-label={tool.label}
                 aria-pressed={isActive}
@@ -399,12 +329,12 @@ export function ToolDock({
             aria-label="Shapes"
             aria-expanded={panel === "shapes"}
             className={`flex h-9 items-center gap-1 rounded-xl px-2 transition-colors ${
-              activeToolId === "geo" || panel === "shapes"
+              SHAPE_TOOLS.includes(activeToolId) || panel === "shapes"
                 ? "bg-neutral-900/5 text-neutral-900"
                 : "text-neutral-600 hover:bg-neutral-900/5 hover:text-neutral-900"
             }`}
           >
-            {activeToolId === "geo" ? (
+            {SHAPE_TOOLS.includes(activeToolId) ? (
               <ShapePreview d={currentShape.preview} className="h-[18px] w-[18px]" />
             ) : (
               <Shapes className="h-[18px] w-[18px]" aria-hidden />
@@ -440,17 +370,6 @@ export function ToolDock({
             className={iconButton(false)}
           >
             <ImagePlus className="h-[18px] w-[18px]" aria-hidden />
-          </button>
-
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={onInsertTable}
-            title="Insert a table"
-            aria-label="Insert table"
-            className={iconButton(false)}
-          >
-            <TableIcon className="h-[18px] w-[18px]" aria-hidden />
           </button>
 
           <span className="mx-1 h-6 w-px bg-neutral-200/80" aria-hidden />
