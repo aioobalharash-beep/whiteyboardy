@@ -371,7 +371,14 @@ export default function App() {
 
   /** Keeps the dock in step with whatever the canvas is doing. */
   const syncDock = useCallback((appState: AppState) => {
-    const tool = appState.activeTool.type as DockToolId;
+    const active = appState.activeTool;
+    // Our pen is a custom tool, so its id never arrives from Excalidraw.
+    const tool: DockToolId =
+      active.type === "custom"
+        ? active.customType === PEN_CUSTOM_TYPE
+          ? "pen"
+          : "selection"
+        : (active.type as DockToolId);
     if (tool !== activeToolIdRef.current) {
       activeToolIdRef.current = tool;
       setActiveToolId(tool);
