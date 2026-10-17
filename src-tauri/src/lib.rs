@@ -43,6 +43,30 @@ fn allow_import_path(app: tauri::AppHandle, path: String) -> Result<(), String> 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            // Tauri does not create the app data directory for us, and the
+            // webview's `fs` plugin cannot create it either: `mkdir(".")` resolves
+            // to a path with a trailing `.` component, which `create_dir_all`
+            // mishandles (`Path::parent()` skips the `.`, so the parent it tries to
+            // create is the wrong one) and the call fails with ENOENT. Without this
+            // directory every board write fails, so create it here, from Rust,
+            // before the webview loads.
+            match app.path().app_data_dir() {
+                Ok(dir) => {
+                    if let Err(error) = std::fs::create_dir_all(&dir) {
+                        eprintln!(
+                            "[whiteyboardy] could not create the app data directory {}: {error}",
+                            dir.display()
+                        );
+                    }
+                }
+                Err(error) => {
+                    eprintln!("[whiteyboardy] could not resolve the app data directory: {error}")
+                }
+            }
+
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
