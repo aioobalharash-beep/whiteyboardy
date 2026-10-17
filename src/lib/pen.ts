@@ -18,7 +18,7 @@ import {
 } from "@excalidraw/excalidraw";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { normalise, type Point } from "./shapes";
+import { normalise, rebaseOnFirstPoint, type Point } from "./shapes";
 
 /** The `customType` the pen registers with Excalidraw. */
 export const PEN_CUSTOM_TYPE = "whiteyboardy-pen";
