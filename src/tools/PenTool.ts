@@ -45,7 +45,8 @@ interface PenPoint {
  *
  * The path is written straight into a real tldraw `line` shape, so it keeps
  * native stroke colour, thickness, dash, vertex handles, serialization and
- * export behaviour.
+ * export behaviour. A finished path collapses into a single undo step, and an
+ * abandoned one leaves no undo step at all.
  */
 class PenDrawing extends StateNode {
   static override id = "drawing";
