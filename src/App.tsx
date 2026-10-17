@@ -793,6 +793,8 @@ export default function App() {
         onRenameBoard={handleRenameBoard}
         onDeleteBoard={handleDeleteBoard}
         onMoveBoard={handleMoveBoard}
+        onPinBoard={handlePinBoard}
+        onReorderBoard={handleReorderBoard}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
