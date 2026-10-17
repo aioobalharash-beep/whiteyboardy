@@ -200,7 +200,7 @@ src/
 src-tauri/
 ├── tauri.conf.json          # 1280×820 window, overlay title bar
 ├── capabilities/default.json
-└── src/lib.rs               # `allow_export_path` / `allow_import_path` fs-scope commands
+└── src/lib.rs               # app-data dir creation + `allow_export_path` / `allow_import_path` fs-scope commands
 ```
 
 ---
