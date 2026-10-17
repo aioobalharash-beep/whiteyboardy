@@ -225,13 +225,16 @@ function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry
   };
 }
 
-async function readJson<T>(fileName: string, storageKey: string): Promise<T | null> {
+/** Reads a file (or its storage key) as text, without interpreting it. */
+async function readRawText(
+  fileName: string,
+  storageKey: string,
+): Promise<string | null> {
   const { backend } = await resolveStorage();
 
   if (backend === "browser") {
     try {
-      const raw = window.localStorage.getItem(storageKey);
-      return raw ? (JSON.parse(raw) as T) : null;
+      return window.localStorage.getItem(storageKey);
     } catch (error) {
       console.warn(`[storage] could not read ${storageKey}`, error);
       return null;
@@ -242,13 +245,24 @@ async function readJson<T>(fileName: string, storageKey: string): Promise<T | nu
     if (!(await withTimeout(exists(fileName, { baseDir: APP_DATA_DIR }), `exists(${fileName})`))) {
       return null;
     }
-    const raw = await withTimeout(
+    return await withTimeout(
       readTextFile(fileName, { baseDir: APP_DATA_DIR }),
       `readTextFile(${fileName})`,
     );
-    return JSON.parse(raw) as T;
   } catch (error) {
     console.warn(`[storage] could not read ${fileName}`, error);
+    return null;
+  }
+}
+
+async function readJson<T>(fileName: string, storageKey: string): Promise<T | null> {
+  const raw = await readRawText(fileName, storageKey);
+  if (raw === null || raw.trim() === "") return null;
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.warn(`[storage] could not parse ${fileName}`, error);
     return null;
   }
 }
