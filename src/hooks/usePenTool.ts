@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
 import { viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type {
+  ActiveTool,
+  ExcalidrawImperativeAPI,
+  PointerDownState,
+} from "@excalidraw/excalidraw/types";
 import {
   DRAG_THRESHOLD_PX,
   PEN_CUSTOM_TYPE,
