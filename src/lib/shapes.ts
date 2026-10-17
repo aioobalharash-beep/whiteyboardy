@@ -484,6 +484,15 @@ export function insertGeneratedShape(
   if (skeletons.length === 0) return;
 
   const elements = convertToExcalidrawElements(skeletons, { regenerateIds: true });
+
+  // A couple of shapes are an outline plus a glyph (cross box, check box). They
+  // are grouped so the glyph can never be left behind when the shape is moved,
+  // resized or rotated.
+  if (elements.length > 1) {
+    const groupId = createId();
+    for (const element of elements) element.groupIds = [groupId];
+  }
+
   const selectedElementIds: Record<string, true> = {};
   for (const element of elements) selectedElementIds[element.id] = true;
 
