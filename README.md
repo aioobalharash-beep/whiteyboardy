@@ -92,6 +92,25 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   shape you draw and to any current selection. Pattern fills render tldraw's own
   hash pattern.
 
+### Pen tool (vector paths)
+- A dedicated **Pen (lines)** tool sits between the pencil and the eraser. Click
+  to drop anchor points and the path trails the pointer with a rubber-band
+  segment; click the **first** anchor to close the path, or finish with `Enter`
+  or a double-click. `⌫` drops the last anchor and `Esc` throws the path away.
+- The pen is a tldraw **state node** (`wb-pen`, `src/tools/PenTool.ts`) that
+  writes into a real `line` shape, so a finished path is **point-editable** —
+  drag its vertex handles, or restyle it like anything else — and it resizes,
+  serializes, persists and exports with native behaviour.
+- Its **Straight / Smooth** toggle in the pen panel switches between straight
+  segments (`spline: "line"`) and a smooth curve through the anchors
+  (`spline: "cubic"`), and retunes the current selection too.
+- It is deliberately kept apart from the other two line-ish tools: **Pencil
+  (freehand)** is tldraw's pressure-scribble tool and **Arrow** stays a
+  connector, while the pen is the anchor-point vector tool.
+- The tool avoids the trailing "rubber-band" point leaking into the saved shape:
+  the pending point is dropped on finish, and anchors closer than ~3 px (for
+  example from a finishing double-click) are merged.
+
 ### Images
 - **Add image** opens the native macOS open dialog, extends the file-system
   runtime scope for exactly the picked file(s), reads the bytes and drops them
