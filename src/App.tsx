@@ -153,6 +153,25 @@ export default function App() {
   const lastElementsRef = useRef<readonly ExcalidrawElement[] | null>(null);
   const lastFilesRef = useRef<BinaryFiles | null>(null);
 
+  /** Read when a pen path is committed, so it lands in the current style. */
+  const penStyle = useCallback(
+    (): PenStyle => ({
+      strokeColor: colorHex(strokeColorRef.current),
+      strokeWidth: strokeWidthFor(strokeSizeRef.current),
+      fillColor:
+        fillRef.current === "none"
+          ? null
+          : fillBackgroundFor(fillRef.current, strokeColorRef.current),
+    }),
+    [],
+  );
+
+  const pen = usePenTool({
+    api,
+    active: activeToolId === "pen",
+    getStyle: penStyle,
+  });
+
   const activeBoard = useMemo(
     () => boards.find((board) => board.id === activeBoardId) ?? null,
     [boards, activeBoardId],
