@@ -1,5 +1,6 @@
 import {
   compressLegacySegments,
+  createShapeId,
   type Editor,
   type TLDefaultColorStyle,
   type TLDefaultFillStyle,
