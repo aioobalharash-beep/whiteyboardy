@@ -157,9 +157,6 @@ Every board lives on your Mac — nothing is uploaded anywhere.
   `writeFile()` from `@tauri-apps/plugin-fs`.
 
 ### Not in this pass (next phase)
-- A **pen tool** with anchor points and straight/smooth curves. Excalidraw's
-  built-in **Line** tool (dock button or `L`) covers click-to-add-points paths in
-  the meantime; a true anchor-point tool is the next addition.
 - **Tables**, which Excalidraw has no element type for and which therefore have to
   be composed from grouped rectangles plus bound text.
 - Deferred shapes: cloud variants beyond the one above, plus any richer
