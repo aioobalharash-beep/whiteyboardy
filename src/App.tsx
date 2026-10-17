@@ -988,6 +988,15 @@ export default function App() {
               }}
             />
           )}
+
+          {penActive && (
+            <PenOverlay
+              api={api}
+              subscribe={pen.subscribe}
+              getDraft={pen.getDraft}
+              style={penPreviewStyle}
+            />
+          )}
         </div>
 
         {boardLoading && (
