@@ -155,9 +155,9 @@ export function usePenTool({
     if (!api) return;
 
     const onDown = (
-      activeTool: Parameters<Parameters<typeof api.onPointerDown>[0]>[0],
-      _pointerDownState: unknown,
-      event: Parameters<Parameters<typeof api.onPointerDown>[0]>[2],
+      activeTool: ActiveTool,
+      _pointerDownState: PointerDownState,
+      event: React.PointerEvent<HTMLElement>,
     ) => {
       if (!activeRef.current || !isPenTool(activeTool)) return;
 
