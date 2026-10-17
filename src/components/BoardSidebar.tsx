@@ -120,9 +120,11 @@ export function BoardSidebar({
   const handleDragStart = (event: DragEvent<HTMLElement>, board: BoardIndexEntry) => {
     setDraggingId(board.id);
     setDropTarget(null);
-    event.dataTransfer.effectAllowed = "move";
-    // Firefox refuses to start a drag unless some data is set.
-    event.dataTransfer.setData("text/plain", board.id);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      // Firefox refuses to start a drag unless some data is set.
+      event.dataTransfer.setData("text/plain", board.id);
+    }
   };
 
   /** Whether the pointer is in the top half of the hovered row. */
