@@ -6,6 +6,7 @@ import {
   ImagePlus,
   MousePointer2,
   Pencil,
+  PenTool as PenToolIcon,
   Shapes,
   Table as TableIcon,
   Type,
@@ -18,6 +19,7 @@ import {
   type BoardSizeName,
 } from "../lib/palette";
 import { FILL_OPTIONS, SHAPE_CATALOG, findShapeOption, type ShapeOption } from "../lib/shapes";
+import { PEN_TOOL_ID, type PenSpline } from "../tools/PenTool";
 import type { TLDefaultFillStyle } from "tldraw";
 
 interface DockTool {
@@ -29,10 +31,17 @@ interface DockTool {
 
 const DOCK_TOOLS: DockTool[] = [
   { id: "select", label: "Select", shortcut: "V", icon: MousePointer2 },
-  { id: "draw", label: "Pen (freehand)", shortcut: "D", icon: Pencil },
+  { id: "draw", label: "Pencil (freehand)", shortcut: "D", icon: Pencil },
+  { id: PEN_TOOL_ID, label: "Pen (lines)", shortcut: "P", icon: PenToolIcon },
   { id: "eraser", label: "Eraser", shortcut: "E", icon: Eraser },
   { id: "arrow", label: "Arrow", shortcut: "A", icon: ArrowUpRight },
   { id: "text", label: "Text", shortcut: "T", icon: Type },
+];
+
+/** The pen draws straight segments or a smooth curve through its anchors. */
+const PEN_SPLINES: { id: PenSpline; label: string }[] = [
+  { id: "line", label: "Straight" },
+  { id: "cubic", label: "Smooth" },
 ];
 
 interface ToolDockProps {
