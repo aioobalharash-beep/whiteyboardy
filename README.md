@@ -13,7 +13,9 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 ### Local-first multi-board management
 - Boards are stored in the app data directory:
   `~/Library/Application Support/com.whiteyboardy.app/`
-  - `boards-index.json` — `{ version: 2, folders: [...], boards: [...] }`
+  - `boards-index.json` — `{ version: 3, folders: [...], boards: [...] }`,
+    where each board keeps its `folderId`, its `pinned` flag and its place in the
+    library order
   - `board-<id>.json` — a tldraw store snapshot per board
 - Each snapshot is produced with `getSnapshot(editor.store)` and restored with
   `loadSnapshot(editor.store, snapshot)`.
