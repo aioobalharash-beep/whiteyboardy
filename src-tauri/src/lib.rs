@@ -1,3 +1,4 @@
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 /// Adds one concrete file to the file-system plugin's runtime scope.
