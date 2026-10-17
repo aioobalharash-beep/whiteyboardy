@@ -194,9 +194,9 @@ export function usePenTool({
     };
 
     const onUp = (
-      activeTool: Parameters<Parameters<typeof api.onPointerUp>[0]>[0],
-      _pointerDownState: unknown,
-      event: Parameters<Parameters<typeof api.onPointerUp>[0]>[2],
+      activeTool: ActiveTool,
+      _pointerDownState: PointerDownState,
+      event: PointerEvent,
     ) => {
       if (!isPenTool(activeTool)) return;
 
