@@ -913,6 +913,14 @@ export default function App() {
   );
 
   const canvasReady = loadedBoard !== null && loadedBoard.boardId === activeBoardId;
+  const penActive = activeToolId === "pen";
+  // What the pen previews with; committed paths read the refs instead so a
+  // style chosen mid-path still applies.
+  const penPreviewStyle: PenStyle = {
+    strokeColor: colorHex(strokeColor),
+    strokeWidth: strokeWidthFor(strokeSize),
+    fillColor: fill === "none" ? null : fillBackgroundFor(fill, strokeColor),
+  };
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-neutral-100">
