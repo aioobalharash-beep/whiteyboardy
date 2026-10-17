@@ -239,7 +239,7 @@ export async function exportBoard({
     files,
     mimeType: "image/png",
     exportPadding: EXPORT_PADDING,
-    getDimensions: (width, height) => ({
+    getDimensions: (width: number, height: number) => ({
       width: width * EXPORT_SCALE,
       height: height * EXPORT_SCALE,
       scale: EXPORT_SCALE,

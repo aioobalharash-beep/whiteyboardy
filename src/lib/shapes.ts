@@ -487,7 +487,12 @@ export function insertGeneratedShape(
     elements: [...api.getSceneElements(), ...elements],
     appState: {
       selectedElementIds,
-      activeTool: { type: "selection", lastActiveTool: null, locked: false },
+      activeTool: {
+        type: "selection",
+        customType: null,
+        lastActiveTool: null,
+        locked: false,
+      },
     },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });
