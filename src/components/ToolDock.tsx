@@ -6,9 +6,11 @@ import {
   ImagePlus,
   MousePointer2,
   Pencil,
+  PenLine,
   Shapes,
   Type,
 } from "lucide-react";
+import type { ToolType } from "@excalidraw/excalidraw/types";
 import {
   BOARD_COLORS,
   BOARD_FILLS,
@@ -20,26 +22,36 @@ import {
 } from "../lib/palette";
 import { SHAPE_CATALOG, findShapeOption, type ShapeOption } from "../lib/shapes";
 
-/** Excalidraw's tool ids, which the dock drives through `setActiveTool`. */
-const SELECT_TOOL = "selection";
-const FREEDRAW_TOOL = "freedraw";
-const ERASER_TOOL = "eraser";
-const ARROW_TOOL = "arrow";
-const TEXT_TOOL = "text";
+/**
+ * The tools the dock drives through Excalidraw's `setActiveTool`.
+ *
+ * Tools that need extra arguments (`image`, custom tools) are driven by the
+ * dock's own handlers instead, so they are not part of this union.
+ */
+export type DockToolId = Exclude<ToolType, "image">;
+
+const SELECT_TOOL: DockToolId = "selection";
+const FREEDRAW_TOOL: DockToolId = "freedraw";
+const LINE_TOOL: DockToolId = "line";
+const ERASER_TOOL: DockToolId = "eraser";
+const ARROW_TOOL: DockToolId = "arrow";
+const TEXT_TOOL: DockToolId = "text";
 
 /** Every tool that draws one of the shapes in the shapes panel. */
-const SHAPE_TOOLS = ["rectangle", "ellipse", "diamond"];
+const SHAPE_TOOLS: DockToolId[] = ["rectangle", "ellipse", "diamond"];
 
 interface DockTool {
-  id: string;
+  id: DockToolId;
   label: string;
   shortcut: string;
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }
 
+/** The shortcut letters match Excalidraw's own key bindings. */
 const DOCK_TOOLS: DockTool[] = [
   { id: SELECT_TOOL, label: "Select", shortcut: "V", icon: MousePointer2 },
-  { id: FREEDRAW_TOOL, label: "Pencil (freehand)", shortcut: "D", icon: Pencil },
+  { id: FREEDRAW_TOOL, label: "Pencil (freehand)", shortcut: "P", icon: Pencil },
+  { id: LINE_TOOL, label: "Line (click to add points)", shortcut: "L", icon: PenLine },
   { id: ERASER_TOOL, label: "Eraser", shortcut: "E", icon: Eraser },
   { id: ARROW_TOOL, label: "Arrow", shortcut: "A", icon: ArrowUpRight },
   { id: TEXT_TOOL, label: "Text", shortcut: "T", icon: Type },
