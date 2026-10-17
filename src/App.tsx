@@ -69,7 +69,20 @@ interface LiveScene {
   files: BinaryFiles;
 }
 
-/** Asks the user to confirm a destructive action, natively when possible. */async function confirmDestructive(
+/**
+ * `updateScene` is declared as taking a complete `AppState` slice, but at
+ * runtime it only copies the properties it is handed — so a partial patch is
+ * exactly what it expects. Keeping that one discrepancy in a single helper
+ * means it can never leak into a caller's types.
+ */
+function partialAppState(
+  patch: Partial<AppState>,
+): Pick<AppState, keyof AppState> {
+  return patch as Pick<AppState, keyof AppState>;
+}
+
+/** Asks the user to confirm a destructive action, natively when possible. */
+async function confirmDestructive(
   title: string,
   message: string,
   okLabel: string,
