@@ -128,20 +128,25 @@ src/
 ├── main.tsx                 # React entry point
 ├── styles.css               # Tailwind v4 + tldraw + base macOS surface
 ├── components/
-│   ├── BoardSidebar.tsx     # collapsible board list (create / rename / delete)
-│   ├── ToolDock.tsx         # floating tool pill + stroke picker
+│   ├── BoardSidebar.tsx     # folders + boards (create / rename / delete / move)
+│   ├── ToolDock.tsx         # tools, shape picker, colour/thickness/fill, insert
+│   ├── ZoomHud.tsx          # bottom-right zoom & navigation HUD
 │   ├── ExportBar.tsx        # PNG/PDF toggle, whole board & section export
 │   ├── CropOverlay.tsx      # marquee section selection
 │   └── Toast.tsx            # transient status messages
+├── shapes/
+│   └── TableShape.tsx       # `wb-table` custom shape (grid editing + SVG export)
 └── lib/
     ├── storage.ts           # AppData persistence (+ localStorage fallback)
     ├── export.ts            # PNG / PDF export pipeline
+    ├── shapes.ts            # shape catalog, fill options, generated shapes
+    ├── insert.ts            # image insertion from the device
     └── palette.ts           # stroke colour & thickness options
 
 src-tauri/
 ├── tauri.conf.json          # 1280×820 window, overlay title bar
 ├── capabilities/default.json
-└── src/lib.rs               # `allow_export_path` runtime fs-scope command
+└── src/lib.rs               # `allow_export_path` / `allow_import_path` fs-scope commands
 ```
 
 ---
