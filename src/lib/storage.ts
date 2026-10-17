@@ -55,6 +55,7 @@ export interface BoardLibrary {
  *     ├── board-<id>.json
  *     └── …
  *
+ * Each `board-<id>.json` is an Excalidraw scene (see {@link BoardSceneFile}).
  * Rust creates that directory at startup (`create_dir_all`); the webview's `fs`
  * plugin cannot, because `mkdir(".")` resolves to a path with a trailing `.`
  * component that `create_dir_all` handles incorrectly.
