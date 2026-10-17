@@ -148,6 +148,28 @@ zoom around the viewport centre; board creation, switching, per-board autosave,
 reload-with-camera-and-style and delete all work; a seeded legacy tldraw board is
 copied to `…legacy-tldraw` before its file is replaced.
 
+**Verified in the packaged app** (`npm run tauri build`, running from
+`WhiteyBoardy.app`, app data in
+`~/Library/Application Support/com.whiteyboardy.app/`):
+
+- a seeded Excalidraw scene (two closed `line` shapes plus an image with its
+  binary) loaded and was written back with the same three elements, the same
+  image file and the camera and pen style intact (`zoom {"value": 2}`,
+  `scrollX: -100`, `scrollY: -50`, `currentItemStrokeColor: "#e03131"`,
+  `currentItemStrokeWidth: 4`) — load, serialization and the file backend work
+  end to end;
+- a board with no file yet opens empty and writes an empty scene;
+- the leftover tldraw snapshot in the app data directory was copied to
+  `board-<id>.legacy-tldraw.json` (byte-identical, still `{document, session}`)
+  before the empty scene was saved over the original;
+- a throwaway self-test (added, run, then removed) sampled the real renderer in
+  the packaged build: at 270 ms it had painted the seeded star (220,665 red
+  pixels), at 9,020 ms the canvas was unchanged and still on screen, and a
+  synthetic ctrl+wheel zoom at 9.6 s repainted it (242,836 red pixels, different
+  bounding box). No licence/gate text appeared in the DOM. The previous engine
+  was blank at 5 s in exactly this environment; nothing in this build is time- or
+  licence-dependent.
+
 ### Still owed by Phase 2
 
 1. **Pen tool** (anchor points, straight/smooth, point editing) as an Excalidraw
