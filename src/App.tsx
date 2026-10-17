@@ -27,6 +27,7 @@ import {
 } from "./lib/export";
 import { insertImagesFromDevice } from "./lib/insert";
 import {
+  TLDRAW_LICENSE_GRACE_MS,
   TLDRAW_LICENSE_KEY,
   isEditorLicenseGated,
   licenseKeyMissingInProduction,
