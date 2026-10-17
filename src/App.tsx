@@ -498,11 +498,32 @@ export default function App() {
       // Never steal keys from the inline rename inputs.
       if (isTypingTarget(event.target)) return;
 
+      // An in-progress pen path owns Enter, Escape and the delete keys.
+      if (pen.handleKeyDown(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         // Tab is the Zen mode toggle, so keep it away from focus navigation.
         event.preventDefault();
         event.stopPropagation();
         setZenMode((zen) => !zen);
+        return;
+      }
+
+      // The pen is not one of Excalidraw's tools, so its shortcut is ours to
+      // handle. Every other tool letter is left to the engine.
+      if (
+        event.key.toLowerCase() === "n" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        api?.setActiveTool({ type: "custom", customType: PEN_CUSTOM_TYPE });
         return;
       }
 
@@ -515,7 +536,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [isCropping]);
+  }, [api, isCropping, pen.handleKeyDown]);
 
   // --- Board actions ------------------------------------------------------
   const handleCreateBoard = useCallback(
