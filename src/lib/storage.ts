@@ -14,11 +14,26 @@ import type { TLEditorSnapshot } from "tldraw";
  */
 export type BoardSnapshot = TLEditorSnapshot;
 
-/** A single entry of `boards-index.json`. */
+/** A single board inside the library. */
 export interface BoardIndexEntry {
   id: string;
   name: string;
+  /** `null` for a board that lives at the top level (not in a folder). */
+  folderId: string | null;
   updatedAt: number;
+}
+
+/** A folder used to group boards. */
+export interface FolderEntry {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+/** The whole board library: folders plus the boards they organise. */
+export interface BoardLibrary {
+  folders: FolderEntry[];
+  boards: BoardIndexEntry[];
 }
 
 /**
@@ -35,6 +50,9 @@ export interface BoardIndexEntry {
 const APP_DATA_DIR = BaseDirectory.AppData;
 const INDEX_FILE_NAME = "boards-index.json";
 const INDEX_STORAGE_KEY = "whiteyboardy.boards-index";
+
+/** Bumped whenever the on-disk shape of `boards-index.json` changes. */
+const LIBRARY_VERSION = 2;
 
 const boardFileName = (boardId: string) => `board-${boardId}.json`;
 const boardStorageKey = (boardId: string) => `whiteyboardy.board.${boardId}`;
@@ -65,22 +83,47 @@ function ensureAppDataDir(): Promise<void> {
   return appDataDirReady;
 }
 
-/** Stable, collision-free id for a new board. */
-export function createBoardId(): string {
+/** Stable, collision-free id for a new board or folder. */
+export function createId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  return `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `wb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export const createBoardId = createId;
+export const createFolderId = createId;
+
+function isFolderEntry(value: unknown): value is FolderEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<FolderEntry>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.createdAt === "number"
+  );
 }
 
 function isBoardIndexEntry(value: unknown): value is BoardIndexEntry {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<BoardIndexEntry>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.name === "string" &&
-    typeof candidate.updatedAt === "number"
-  );
+  return typeof candidate.id === "string" && typeof candidate.name === "string";
+}
+
+/** Normalises a board entry, defaulting everything a legacy file may omit. */
+function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry | null {
+  if (!isBoardIndexEntry(value)) return null;
+  const candidate = value as Partial<BoardIndexEntry>;
+  const folderId =
+    typeof candidate.folderId === "string" && folderIds.has(candidate.folderId)
+      ? candidate.folderId
+      : null;
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    folderId,
+    updatedAt: typeof candidate.updatedAt === "number" ? candidate.updatedAt : Date.now(),
+  };
 }
 
 async function readJson<T>(fileName: string, storageKey: string): Promise<T | null> {
@@ -134,16 +177,45 @@ async function deleteFile(fileName: string, storageKey: string): Promise<void> {
   }
 }
 
-/** Reads `boards-index.json`, discarding any malformed entries. */
-export async function loadBoardIndex(): Promise<BoardIndexEntry[]> {
+/**
+ * Reads `boards-index.json`, migrating the legacy v1 shape (a bare array of
+ * boards) into the current `{ folders, boards }` library and discarding any
+ * malformed entries.
+ */
+export async function loadLibrary(): Promise<BoardLibrary> {
   const raw = await readJson<unknown>(INDEX_FILE_NAME, INDEX_STORAGE_KEY);
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(isBoardIndexEntry);
+
+  // v1: a plain array of boards with no folders.
+  if (Array.isArray(raw)) {
+    const boards = raw
+      .map((entry) => normaliseBoard(entry, new Set()))
+      .filter((entry): entry is BoardIndexEntry => entry !== null);
+    return { folders: [], boards };
+  }
+
+  if (typeof raw !== "object" || raw === null) return { folders: [], boards: [] };
+
+  const candidate = raw as { folders?: unknown; boards?: unknown };
+  const folders = Array.isArray(candidate.folders)
+    ? candidate.folders.filter(isFolderEntry)
+    : [];
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const boards = Array.isArray(candidate.boards)
+    ? candidate.boards
+        .map((entry) => normaliseBoard(entry, folderIds))
+        .filter((entry): entry is BoardIndexEntry => entry !== null)
+    : [];
+
+  return { folders, boards };
 }
 
-/** Persists the board index. */
-export async function saveBoardIndex(boards: BoardIndexEntry[]): Promise<void> {
-  await writeJson(INDEX_FILE_NAME, INDEX_STORAGE_KEY, boards);
+/** Persists the board library. */
+export async function saveLibrary(library: BoardLibrary): Promise<void> {
+  await writeJson(INDEX_FILE_NAME, INDEX_STORAGE_KEY, {
+    version: LIBRARY_VERSION,
+    folders: library.folders,
+    boards: library.boards,
+  });
 }
 
 /** Loads a board's tldraw snapshot, or `null` for a board that has no data yet. */
