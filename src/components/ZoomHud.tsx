@@ -7,18 +7,15 @@ interface ZoomHudProps {
 }
 
 /**
- * tldraw plays animated camera moves on its own animation clock. We deliberately
- * use the immediate variants instead: they never depend on that clock running,
- * so the HUD is always responsive. Center-anchored calls keep the point under the
- * cursor steady while zooming.
- */
-
-/**
  * A floating navigation HUD pinned to the bottom-right of the canvas.
  *
  * It surfaces the current zoom level (so you always know how far in or out you
  * are) and gives one-click ways back to a known view: reset to 100 %, fit every
  * shape on the page, or jump to the current selection.
+ *
+ * The buttons call tldraw's immediate camera helpers rather than its animated
+ * ones: an animation only advances on tldraw's own frame clock, so an immediate
+ * move keeps the HUD responsive no matter what else is happening on the canvas.
  */
 export function ZoomHud({ visible, editor }: ZoomHudProps) {
   const zoomLevel = useValue(
