@@ -469,11 +469,51 @@ export default function App() {
     );
   }, []);
 
+  /** Moving a board into a folder takes it out of the pinned section. */
   const handleMoveBoard = useCallback((boardId: string, folderId: string | null) => {
     setBoards((previous) =>
-      previous.map((board) => (board.id === boardId ? { ...board, folderId } : board)),
+      previous.map((board) =>
+        board.id === boardId
+          ? { ...board, folderId, pinned: folderId ? false : board.pinned }
+          : board,
+      ),
     );
   }, []);
+
+  const handlePinBoard = useCallback((boardId: string, pinned: boolean) => {
+    setBoards((previous) =>
+      previous.map((board) => (board.id === boardId ? { ...board, pinned } : board)),
+    );
+  }, []);
+
+  /**
+   * Drag-and-drop reordering: the board is lifted next to `targetId` in the
+   * library, and takes on the target's folder and pin state so it lands in the
+   * same list the user dropped it into.
+   */
+  const handleReorderBoard = useCallback(
+    (boardId: string, targetId: string, edge: "before" | "after") => {
+      if (boardId === targetId) return;
+      setBoards((previous) => {
+        const moving = previous.find((board) => board.id === boardId);
+        const target = previous.find((board) => board.id === targetId);
+        if (!moving || !target) return previous;
+
+        const reordered = previous.filter((board) => board.id !== boardId);
+        const targetIndex = reordered.findIndex((board) => board.id === targetId);
+        if (targetIndex === -1) return previous;
+
+        const insertAt = edge === "before" ? targetIndex : targetIndex + 1;
+        const moved: BoardIndexEntry = {
+          ...moving,
+          folderId: target.folderId,
+          pinned: target.pinned,
+        };
+        return [...reordered.slice(0, insertAt), moved, ...reordered.slice(insertAt)];
+      });
+    },
+    [],
+  );
 
   const handleDeleteBoard = useCallback(
     async (boardId: string) => {
