@@ -69,8 +69,7 @@ interface LiveScene {
   files: BinaryFiles;
 }
 
-/** Asks the user to confirm a destructive action, natively when possible. */
-async function confirmDestructive(
+/** Asks the user to confirm a destructive action, natively when possible. */async function confirmDestructive(
   title: string,
   message: string,
   okLabel: string,
