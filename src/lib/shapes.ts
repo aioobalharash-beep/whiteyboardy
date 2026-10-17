@@ -236,14 +236,27 @@ function square(size: number, inset = 0): Point[] {
 const EMPTY: Point[] = square(1);
 
 export const SHAPE_CATALOG: ShapeOption[] = [
-  { id: "rectangle", label: "Rectangle", preview: "M4 6h16v12H4z", tool: "rectangle" },
+  {
+    id: "rectangle",
+    label: "Rectangle",
+    preview: "M4 6h16v12H4z",
+    tool: "rectangle",
+    shortcut: "R",
+  },
   {
     id: "circle",
     label: "Circle",
     preview: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18",
     tool: "ellipse",
+    shortcut: "O",
   },
-  { id: "diamond", label: "Diamond", preview: "M12 3l9 9l-9 9l-9-9z", tool: "diamond" },
+  {
+    id: "diamond",
+    label: "Diamond",
+    preview: "M12 3l9 9l-9 9l-9-9z",
+    tool: "diamond",
+    shortcut: "D",
+  },
   {
     id: "half-circle",
     label: "Half circle",
