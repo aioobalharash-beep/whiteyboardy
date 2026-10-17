@@ -349,24 +349,51 @@ export async function saveLibrary(library: BoardLibrary): Promise<void> {
   });
 }
 
-/** Loads a board's tldraw snapshot, or `null` for a board that has no data yet. */
-export async function loadBoardSnapshot(
-  boardId: string,
-): Promise<BoardSnapshot | null> {
-  const raw = await readJson<BoardSnapshot>(boardFileName(boardId), boardStorageKey(boardId));
-  if (!raw || typeof raw !== "object" || !("document" in raw)) return null;
-  return raw;
+/**
+ * Loads a board's scene, or `null` for a board that has no data yet.
+ *
+ * Anything that is not an Excalidraw scene is ignored — including the tldraw
+ * snapshots (`{ document, session }`) older builds wrote — so a stale file can
+ * never make the canvas throw.
+ */
+export async function loadBoardScene(boardId: string): Promise<BoardSceneFile | null> {
+  const raw = await readJson<unknown>(boardFileName(boardId), boardStorageKey(boardId));
+  if (typeof raw !== "object" || raw === null) return null;
+
+  const candidate = raw as Partial<BoardSceneFile>;
+  if (candidate.type !== "excalidraw" || !Array.isArray(candidate.elements)) {
+    console.warn(`[storage] ignoring ${boardFileName(boardId)}: not an Excalidraw scene`);
+    return null;
+  }
+
+  return {
+    type: "excalidraw",
+    version: typeof candidate.version === "number" ? candidate.version : 2,
+    source: typeof candidate.source === "string" ? candidate.source : "whiteyboardy",
+    elements: candidate.elements,
+    appState:
+      typeof candidate.appState === "object" && candidate.appState !== null
+        ? (candidate.appState as Record<string, unknown>)
+        : {},
+    files:
+      typeof candidate.files === "object" && candidate.files !== null
+        ? (candidate.files as Record<string, unknown>)
+        : {},
+  };
 }
 
-/** Writes a board's tldraw snapshot to disk. */
-export async function saveBoardSnapshot(
-  boardId: string,
-  snapshot: BoardSnapshot,
-): Promise<void> {
-  await writeJson(boardFileName(boardId), boardStorageKey(boardId), snapshot);
+/**
+ * Writes a board's scene.
+ *
+ * The scene arrives already serialized: it can hold megabytes of image data, so
+ * round-tripping it through `JSON.parse`/`JSON.stringify` just to pretty-print it
+ * would be wasted work.
+ */
+export async function saveBoardScene(boardId: string, sceneJson: string): Promise<void> {
+  await writeRaw(boardFileName(boardId), boardStorageKey(boardId), sceneJson);
 }
 
-/** Removes a board's snapshot from disk. */
-export async function deleteBoardSnapshot(boardId: string): Promise<void> {
+/** Removes a board's scene from disk. */
+export async function deleteBoardScene(boardId: string): Promise<void> {
   await deleteFile(boardFileName(boardId), boardStorageKey(boardId));
 }
