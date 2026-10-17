@@ -7,6 +7,7 @@ import {
   MousePointer2,
   Pencil,
   PenLine,
+  PenTool as PenToolIcon,
   Shapes,
   Type,
 } from "lucide-react";
