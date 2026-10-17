@@ -6,7 +6,12 @@ interface ZoomHudProps {
   editor: Editor | null;
 }
 
-const ZOOM_ANIMATION = { animation: { duration: 140 } };
+/**
+ * tldraw plays animated camera moves on its own animation clock. We deliberately
+ * use the immediate variants instead: they never depend on that clock running,
+ * so the HUD is always responsive. Center-anchored calls keep the point under the
+ * cursor steady while zooming.
+ */
 
 /**
  * A floating navigation HUD pinned to the bottom-right of the canvas.
