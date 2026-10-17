@@ -57,6 +57,8 @@ const UNITS_PER_SAMPLE = 4;
 export interface PenStyle {
   strokeColor: string;
   strokeWidth: number;
+  /** How a closed path is filled, in Excalidraw's own terms. */
+  fillStyle: "hachure" | "cross-hatch" | "solid";
   /** The fill colour, or `null` when the dock is set to no fill. */
   fillColor: string | null;
 }
