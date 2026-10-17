@@ -62,6 +62,16 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   The pen tool
+   Excalidraw gives custom tools no cursor of their own (it resets the canvas to
+   `auto` on every pointer move), so the pen's crosshair is set from here rather
+   than fought for on each event.
+--------------------------------------------------------------------------- */
+.wb-canvas.wb-pen-active .excalidraw__canvas.interactive {
+  cursor: crosshair !important;
+}
+
+/* ---------------------------------------------------------------------------
    Window drag region: an invisible strip at the very top of the window that
    lets the user drag the frameless-ish overlay window around.
 --------------------------------------------------------------------------- */
