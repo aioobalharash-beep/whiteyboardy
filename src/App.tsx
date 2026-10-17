@@ -146,6 +146,12 @@ export default function App() {
     activeBoardIdRef.current = activeBoardId;
   }, [activeBoardId]);
 
+  // Keep the set of live board ids fresh so a delayed write can never target a
+  // board the user already deleted.
+  useEffect(() => {
+    liveBoardIdsRef.current = new Set(boards.map((board) => board.id));
+  }, [boards]);
+
   // --- Initial board library ---------------------------------------------
   useEffect(() => {
     let cancelled = false;
