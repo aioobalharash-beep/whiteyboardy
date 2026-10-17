@@ -292,7 +292,7 @@ export async function exportBoard({
         : [{ name: "PDF document", extensions: ["pdf"] }],
   });
 
-  if (!filePath) return { status: "cancelled" } as ExportOutcome;
+  if (!filePath) return { status: "cancelled" };
 
   await allowExportPath(filePath);
 
