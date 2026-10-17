@@ -364,19 +364,57 @@ export async function saveLibrary(library: BoardLibrary): Promise<void> {
 }
 
 /**
+ * Keeps a copy of a board file this build cannot read, under a clearly labelled
+ * name, before returning an empty board for it.
+ *
+ * Boards written before the canvas engine changed are tldraw snapshots. They
+ * cannot be drawn any more, but that is no reason to destroy them: without this
+ * the empty board the user sees would be autosaved over the original within a
+ * second of opening it.
+ */
+async function backupLegacyBoard(boardId: string, raw: string): Promise<void> {
+  const backupName = `board-${boardId}.legacy-tldraw.json`;
+  const backupKey = `${boardStorageKey(boardId)}.legacy-tldraw`;
+
+  try {
+    await writeRaw(backupName, backupKey, raw);
+    console.warn(`[storage] kept a copy of the older tldraw board as ${backupName}`);
+  } catch (error) {
+    console.warn(`[storage] could not back up ${backupName}`, error);
+  }
+}
+
+/**
  * Loads a board's scene, or `null` for a board that has no data yet.
  *
  * Anything that is not an Excalidraw scene is ignored — including the tldraw
  * snapshots (`{ document, session }`) older builds wrote — so a stale file can
- * never make the canvas throw.
+ * never make the canvas throw. Those snapshots are copied aside first, so the
+ * original bytes survive the empty board being saved over them.
  */
 export async function loadBoardScene(boardId: string): Promise<BoardSceneFile | null> {
-  const raw = await readJson<unknown>(boardFileName(boardId), boardStorageKey(boardId));
-  if (typeof raw !== "object" || raw === null) return null;
+  const fileName = boardFileName(boardId);
+  const raw = await readRawText(fileName, boardStorageKey(boardId));
+  if (raw === null || raw.trim() === "") return null;
 
-  const candidate = raw as Partial<BoardSceneFile>;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.warn(`[storage] ${fileName} is not valid JSON`, error);
+    await backupLegacyBoard(boardId, raw);
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    await backupLegacyBoard(boardId, raw);
+    return null;
+  }
+
+  const candidate = parsed as Partial<BoardSceneFile>;
   if (candidate.type !== "excalidraw" || !Array.isArray(candidate.elements)) {
-    console.warn(`[storage] ignoring ${boardFileName(boardId)}: not an Excalidraw scene`);
+    console.warn(`[storage] ignoring ${fileName}: not an Excalidraw scene`);
+    await backupLegacyBoard(boardId, raw);
     return null;
   }
 
