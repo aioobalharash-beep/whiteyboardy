@@ -52,12 +52,44 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 - **Collapsible sidebar** with `pt-10` breathing room for the traffic lights.
   Toggle with the header button or **`⌘ + \`**; a small floating button at the
   top-left reopens it.
-- **Collapsible bottom tool dock** driving the tldraw `Editor`: Select, Freehand
-  draw, Eraser, Rectangle, Arrow and Text, plus a stroke colour & thickness
-  picker. Toggle it (Zen mode) with the eye button or **`Tab`** for a 100 %
-  unobstructed canvas.
+- **Collapsible bottom tool dock** driving the tldraw `Editor`: Select, Pen
+  (freehand), Eraser, Arrow and Text, plus a shape picker, a stroke
+  colour/thickness/fill popover, image & table insertion, and the Zen toggle.
+  Toggle it (Zen mode) with the eye button or **`Tab`** for a 100 % unobstructed
+  canvas.
+- **Zoom HUD** in the bottom-right corner: zoom out, a live zoom percentage that
+  resets to 100 %, zoom in, **fit everything on the board**, and **jump to the
+  current selection**. Hidden in Zen mode like the rest of the chrome.
 - tldraw's own editing chrome is completely hidden with `<Tldraw hideUi />`
   (only the licence watermark remains — see the licensing note below).
+
+### Shapes, fills and drawing tools
+- Tools: Select, Pen (freehand), Eraser, Arrow and Text.
+- **18 shapes** in the picker: rectangle, circle, equilateral triangle, diamond,
+  star, pentagon, hexagon, octagon, trapezoid, rhombus, cloud, heart, cross box,
+  check box — plus four shapes tldraw does not ship: **half circle, quarter
+  circle, right triangle and obtuse triangle**.
+- The extra shapes are generated as **closed tldraw `draw` shapes** (via
+  `compressLegacySegments`), so they keep native stroke, dash, colour, **fill**,
+  resize, serialization and export for free. The polygon perimeters are sampled
+  a few pixels apart so tldraw's freehand smoothing keeps their corners sharp.
+- **Fill picker** (none / semi / solid / pattern) that applies both to the next
+  shape you draw and to any current selection. Pattern fills render tldraw's own
+  hash pattern.
+
+### Images
+- **Add image** opens the native macOS open dialog, extends the file-system
+  runtime scope for exactly the picked file(s), reads the bytes and drops them
+  onto the canvas with `editor.putExternalContent({ type: "files", … })`.
+- In the browser preview it falls back to a hidden `<input type="file">`.
+
+### Tables
+- **Insert table** adds a `wb-table` custom shape: a 3×4 grid that can be resized,
+  and grown or shrunk with the +/− Row / +/− Col buttons shown while selected.
+- Double-click a cell to edit it; `Tab` / `Shift+Tab` and the arrow keys move
+  between cells, `Enter` or `Escape` leaves editing.
+- Because it is a real tldraw shape it serializes, resizes and **exports** (its
+  `toSvg` renders the grid, strokes and text into PNG/PDF exports).
 
 ### Export pipeline
 - Floating top-right export bar (hidden in Zen mode) with a **PNG / PDF**
