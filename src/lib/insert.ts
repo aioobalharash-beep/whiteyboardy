@@ -10,6 +10,7 @@ import type {
   BinaryFileData,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
+import { viewportCentre } from "./shapes";
 import { isTauriRuntime } from "./storage";
 
 const MIME_BY_EXTENSION: Record<string, string> = {

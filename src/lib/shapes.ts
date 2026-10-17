@@ -420,6 +420,15 @@ function outlineElement(
   };
 }
 
+/** The scene point at the middle of the visible canvas. */
+export function viewportCentre(api: ExcalidrawImperativeAPI): Point {
+  const { width, height, scrollX, scrollY, zoom } = api.getAppState();
+  return {
+    x: (width / 2 - scrollX) / zoom.value,
+    y: (height / 2 - scrollY) / zoom.value,
+  };
+}
+
 /** Builds the Excalidraw elements for one of the generated shapes. */
 export function buildShapeElements(
   option: ShapeOption,
