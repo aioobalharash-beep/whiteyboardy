@@ -199,7 +199,7 @@ export function BoardSidebar({
             <button
               type="button"
               onClick={() => {
-                onCreateFolder();
+                onCreateFolder(board.id);
                 setMenuBoardId(null);
               }}
               className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-900/5"
