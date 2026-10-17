@@ -13,16 +13,34 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 ### Local-first multi-board management
 - Boards are stored in the app data directory:
   `~/Library/Application Support/com.whiteyboardy.app/`
-  - `boards-index.json` — `[{ id, name, updatedAt }]`
+  - `boards-index.json` — `{ version: 2, folders: [...], boards: [...] }`
   - `board-<id>.json` — a tldraw store snapshot per board
 - Each snapshot is produced with `getSnapshot(editor.store)` and restored with
   `loadSnapshot(editor.store, snapshot)`.
 - Auto-save is debounced at **500 ms** and listens only to user document
   changes: `editor.store.listen(fn, { scope: "document", source: "user" })`.
+- **Switching a board never loses work.** The outgoing board is snapshotted
+  *synchronously* — before the first `await` — and written out before the canvas
+  is swapped, so edits made in the same tick as the click are still saved.
 - Create boards, switch between them, rename inline (double-click) and delete
-  them (the last remaining board is protected).
+  them (the last remaining board is protected). Deleting a board or a folder asks
+  for confirmation first (native macOS dialog in the app, `window.confirm` in the
+  browser) and removes the board's snapshot file.
+- Snapshots are never written for a board that no longer exists, so an in-flight
+  autosave can't resurrect a deleted board's file.
+- Older `boards-index.json` files (v1: a bare array of boards) are migrated
+  automatically; unknown folder references are dropped.
 - When running in a plain browser (`npm run dev`), storage transparently falls
   back to `localStorage` so the whole UI keeps working.
+
+### Folders and board organisation
+- The sidebar groups boards into **collapsible folders**, with an **Unfiled**
+  section for everything at the top level and per-folder board counts.
+- Create a folder from the sidebar header or straight from a board's organise
+  menu ("New folder…", which moves that board straight in).
+- Boards can be moved between folders from the per-board organise (⋯) menu,
+  renamed by double-clicking, and folders renamed/deleted the same way. Deleting a
+  folder keeps its boards and moves them back out to the top level.
 
 ### Minimal macOS UI
 - Translucent frosted-glass panels (`bg-white/85 backdrop-blur-xl`), hairline
