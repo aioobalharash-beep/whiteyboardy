@@ -288,6 +288,13 @@ class PenDrawing extends StateNode {
   private write() {
     if (!this.shapeId) return;
 
+    // The board may have changed under us (or the shape been deleted); a stale
+    // draft would otherwise keep writing to a shape that no longer exists.
+    if (!this.editor.getShape(this.shapeId)) {
+      this.reset();
+      return;
+    }
+
     const points: Record<string, TLLineShapePoint> = {};
     for (const point of this.anchors) {
       points[point.index] = { id: point.index, index: point.index, x: point.x, y: point.y };
