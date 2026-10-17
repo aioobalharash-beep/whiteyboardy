@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "tldraw/tldraw.css";
+@import "@excalidraw/excalidraw/index.css";
 
 /* ---------------------------------------------------------------------------
    WhiteyBoardy base styles
@@ -31,27 +31,34 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Hide tldraw's help menu (part of its own chrome, which `hideUi` already
-   disables) so it can't peek through the uncluttered canvas.
-
-   NOTE: the tldraw licence watermark (`.tl-watermark_SEE-LICENSE`) is
-   deliberately NOT hidden here. It is shown for free / unlicensed builds and
-   suppressing it with CSS would circumvent tldraw's attribution requirement.
-   Provide a `licenseKey` to `<Tldraw />` to remove it legitimately. */
-.tlui-help-menu {
+/* ---------------------------------------------------------------------------
+   The canvas
+   Excalidraw ships a full editor UI (main menu, tool bar, footer, welcome
+   screen). WhiteyBoardy draws its own dock, style panel and zoom HUD, so that
+   chrome is hidden. Everything the canvas itself needs — selection handles,
+   the in-place text editor, the context menu — is left alone.
+--------------------------------------------------------------------------- */
+.wb-canvas .App-menu_top,
+.wb-canvas .App-toolbar-container,
+.wb-canvas .App-bottom-bar,
+.wb-canvas .layer-ui__wrapper__footer,
+.wb-canvas .layer-ui__wrapper__top-right,
+.wb-canvas .welcome-screen-center,
+.wb-canvas .welcome-screen-decor,
+.wb-canvas .welcome-screen-decor-hint,
+.wb-canvas .scroll-back-to-content {
   display: none !important;
 }
 
-/* ---------------------------------------------------------------------------
-   tldraw theming: blend the canvas into our neutral macOS palette
---------------------------------------------------------------------------- */
-.tl-container {
-  --tl-color-background: #f5f5f5;
+.wb-canvas .excalidraw {
+  width: 100%;
+  height: 100%;
 }
 
-/* The canvas should never show the default tldraw UI accents */
-.tl-canvas {
-  outline: none !important;
+/* The canvas should never show a focus ring; it is focused nearly always. */
+.wb-canvas .excalidraw:focus,
+.wb-canvas .excalidraw:focus-visible {
+  outline: none;
 }
 
 /* ---------------------------------------------------------------------------
