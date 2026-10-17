@@ -10,6 +10,7 @@
     "dialog:allow-confirm",
     "fs:default",
     "fs:allow-appdata-read-recursive",
-    "fs:allow-appdata-write-recursive"
+    "fs:allow-appdata-write-recursive",
+    "opener:default"
   ]
 }
