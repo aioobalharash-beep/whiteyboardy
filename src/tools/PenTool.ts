@@ -219,6 +219,10 @@ class PenDrawing extends StateNode {
   private finish({ select, exit }: { select: boolean; exit: boolean }) {
     const shapeId = this.shapeId;
     if (!shapeId) return;
+    if (!this.editor.getShape(shapeId)) {
+      this.reset();
+      return;
+    }
 
     const cleaned = this.dedupe(this.anchors);
     if (cleaned.length < 2) {
