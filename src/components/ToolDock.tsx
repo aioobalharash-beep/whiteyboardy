@@ -116,23 +116,30 @@ export function ToolDock({
   color,
   size,
   fill,
+  penSpline,
   disabled = false,
   onSelectTool,
   onSelectShape,
   onSelectColor,
   onSelectSize,
   onSelectFill,
+  onSelectPenSpline,
   onInsertImage,
   onInsertTable,
   onToggle,
 }: ToolDockProps) {
-  const [panel, setPanel] = useState<"none" | "shapes" | "style">("none");
+  const [panel, setPanel] = useState<"none" | "shapes" | "style" | "pen">("none");
   const currentShape: ShapeOption = findShapeOption(shapeId);
 
   // A collapsed dock is Zen mode, so always drop any open popover with it.
   useEffect(() => {
     if (!visible) setPanel("none");
   }, [visible]);
+
+  // The pen options only make sense while the pen is the active tool.
+  useEffect(() => {
+    if (panel === "pen" && activeToolId !== PEN_TOOL_ID) setPanel("none");
+  }, [panel, activeToolId]);
 
   if (!visible) {
     return (
