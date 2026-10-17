@@ -15,15 +15,23 @@ import {
 import { BoardSidebar } from "./components/BoardSidebar";
 import { CropOverlay, type ScreenRect } from "./components/CropOverlay";
 import { ExportBar } from "./components/ExportBar";
+import { LicenseNotice } from "./components/LicenseNotice";
 import { Toast, type Notice } from "./components/Toast";
 import { ToolDock } from "./components/ToolDock";
 import { ZoomHud } from "./components/ZoomHud";
+import { diag } from "./lib/diagnostics";
 import {
   EmptyBoardError,
   exportBoard,
   type ExportFormat,
 } from "./lib/export";
 import { insertImagesFromDevice } from "./lib/insert";
+import {
+  TLDRAW_LICENSE_KEY,
+  isEditorLicenseGated,
+  licenseKeyMissingInProduction,
+  useEditorLicenseGate,
+} from "./lib/license";
 import type { BoardColorName, BoardSizeName } from "./lib/palette";
 import { findShapeOption, insertGeneratedShape } from "./lib/shapes";
 import { insertTable, tableShapeUtils } from "./shapes/TableShape";
