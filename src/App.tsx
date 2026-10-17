@@ -435,8 +435,17 @@ export default function App() {
   }, [isCropping, editor]);
 
   // --- Board actions ------------------------------------------------------
+  /**
+   * Drops a half-drawn pen path before the canvas is replaced, so the outgoing
+   * board is snapshotted without the trailing rubber-band point.
+   */
+  const settleTransientTool = useCallback(() => {
+    if (editor?.getCurrentToolId() === PEN_TOOL_ID) editor.setCurrentTool("select");
+  }, [editor]);
+
   const handleCreateBoard = useCallback(
     async (folderId: string | null) => {
+      settleTransientTool();
       await saveActiveBoardNow();
       const board: BoardIndexEntry = {
         id: createBoardId(),
@@ -448,17 +457,18 @@ export default function App() {
       setBoards((previous) => [...previous, board]);
       setActiveBoardId(board.id);
     },
-    [boards.length, saveActiveBoardNow],
+    [boards.length, saveActiveBoardNow, settleTransientTool],
   );
 
   const handleSelectBoard = useCallback(
     async (boardId: string) => {
       if (boardId === activeBoardIdRef.current) return;
+      settleTransientTool();
       // Make sure the board we are leaving is on disk before we swap the canvas.
       await saveActiveBoardNow();
       setActiveBoardId(boardId);
     },
-    [saveActiveBoardNow],
+    [saveActiveBoardNow, settleTransientTool],
   );
 
   const handleRenameBoard = useCallback((boardId: string, name: string) => {
