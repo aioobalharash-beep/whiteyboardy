@@ -250,6 +250,32 @@ export default function App() {
   }, [folders, boards, libraryLoaded]);
 
   /**
+   * Tell the truth about where the boards are going: if the app data directory
+   * cannot be used in the packaged app, the library silently lives in the
+   * webview's local storage instead, which the user deserves to know about.
+   */
+  useEffect(() => {
+    if (!libraryLoaded) return;
+    let cancelled = false;
+
+    void storageStatus().then((report) => {
+      if (cancelled) return;
+      diag("storage.report", report);
+      if (report.backend === "files" || !isTauriRuntime()) return;
+      showNotice({
+        kind: "error",
+        text: `Could not write to the app data folder (${
+          report.error ?? "unknown reason"
+        }). Boards are being saved to local web storage instead.`,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryLoaded, showNotice]);
+
+  /**
    * Snapshots the canvas *synchronously* and writes it to `boardId`.
    *
    * Capturing the snapshot before the first `await` is what makes this safe to
