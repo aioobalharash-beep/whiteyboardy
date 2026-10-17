@@ -66,22 +66,49 @@ function quarterCirclePoints(size: number): VecModel[] {
   return points;
 }
 
+/**
+ * Samples a polygon's perimeter at a fixed spacing.
+ *
+ * A draw shape's points are rendered through tldraw's freehand smoothing, which
+ * blends each point with the running average of the previous ones. That filter
+ * works per point, not per unit of distance, so a handful of far-apart vertices
+ * gets rounded away entirely. Walking the perimeter with points a few pixels
+ * apart keeps convex corners crisp while still rendering as a smooth stroke.
+ */
+function samplePerimeter(vertices: VecModel[], spacing = 3): VecModel[] {
+  const points: VecModel[] = [];
+  for (let index = 0; index < vertices.length; index++) {
+    const from = vertices[index];
+    const to = vertices[(index + 1) % vertices.length];
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / spacing));
+    // The final vertex of each edge is the first vertex of the next one, so stop
+    // one short to avoid duplicate points at the corners.
+    for (let step = 0; step < steps; step++) {
+      const t = step / steps;
+      points.push({ x: from.x + dx * t, y: from.y + dy * t });
+    }
+  }
+  return points;
+}
+
 /** A right triangle with the right angle in the bottom-left corner. */
 function rightTrianglePoints(size: number): VecModel[] {
-  return [
+  return samplePerimeter([
     { x: 0, y: 0 },
     { x: 0, y: size },
     { x: size, y: size },
-  ];
+  ]);
 }
 
 /** A scalene triangle whose obtuse angle sits in the bottom-left corner. */
 function obtuseTrianglePoints(size: number): VecModel[] {
-  return [
+  return samplePerimeter([
     { x: size * 0.1, y: size },
     { x: size, y: size },
     { x: size * 0.05, y: size * 0.15 },
-  ];
+  ]);
 }
 
 export const SHAPE_CATALOG: ShapeOption[] = [
