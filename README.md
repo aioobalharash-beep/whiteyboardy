@@ -190,12 +190,16 @@ src/
 │   ├── ZoomHud.tsx          # bottom-right zoom & navigation HUD
 │   ├── ExportBar.tsx        # PNG/PDF toggle, whole board & section export
 │   ├── CropOverlay.tsx      # marquee section selection
+│   ├── PenOverlay.tsx       # the pen tool's in-progress path + anchors
 │   └── Toast.tsx            # transient status messages
+├── hooks/
+│   └── usePenTool.ts        # pen state machine: anchors, handles, closing, keys
 └── lib/
     ├── storage.ts           # AppData persistence (verified backend + fallback)
     ├── scene.ts             # scene ⇄ file serialization, board defaults
     ├── export.ts            # PNG / PDF export pipeline
     ├── shapes.ts            # shape catalog + generated (linear) shapes
+    ├── pen.ts               # pen geometry: anchors → sampled linear element
     ├── insert.ts            # image insertion from the device
     └── palette.ts           # stroke colour, thickness & fill options
 
