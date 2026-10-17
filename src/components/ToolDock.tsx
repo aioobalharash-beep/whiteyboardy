@@ -59,13 +59,13 @@ const DOCK_TOOLS: DockTool[] = [
 
 interface ToolDockProps {
   visible: boolean;
-  activeToolId: string;
+  activeToolId: DockToolId;
   shapeId: string;
   color: BoardColorName;
   size: BoardSizeName;
   fill: BoardFillName;
   disabled?: boolean;
-  onSelectTool: (toolId: string) => void;
+  onSelectTool: (toolId: DockToolId) => void;
   onSelectShape: (shapeId: string) => void;
   onSelectColor: (color: BoardColorName) => void;
   onSelectSize: (size: BoardSizeName) => void;
