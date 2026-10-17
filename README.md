@@ -218,6 +218,7 @@ src-tauri/
 | `fs:default` | create + read the application directories |
 | `fs:allow-appdata-read-recursive` | read `boards-index.json` / `board-<id>.json` |
 | `fs:allow-appdata-write-recursive` | write and delete board files |
+| `opener:default` | open the tldraw pricing page from the licence notice |
 
 > **Note on permission names.** The originally specified identifiers
 > `fs:allow-app-data-read-recursive` / `fs:allow-app-data-write-recursive` do not
