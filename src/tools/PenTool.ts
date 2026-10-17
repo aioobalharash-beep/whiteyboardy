@@ -93,6 +93,12 @@ class PenDrawing extends StateNode {
   }
 
   override onKeyDown(info: TLKeyboardEventInfo) {
+    // tldraw maps Enter to `complete()` from its UI shortcuts, which this app
+    // hides, so the pen finishes itself.
+    if (info.key === "Enter") {
+      this.finish({ select: true, exit: true });
+      return;
+    }
     if (info.key === "Backspace" || info.key === "Delete") {
       this.removeLastAnchor();
     }
