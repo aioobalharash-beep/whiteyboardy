@@ -920,6 +920,7 @@ export default function App() {
   const penPreviewStyle: PenStyle = {
     strokeColor: colorHex(strokeColor),
     strokeWidth: strokeWidthFor(strokeSize),
+    fillStyle: fill === "none" ? "solid" : fill,
     fillColor: fill === "none" ? null : fillBackgroundFor(fill, strokeColor),
   };
 
