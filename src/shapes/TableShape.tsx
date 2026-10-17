@@ -339,7 +339,7 @@ export class TableShapeUtil extends ShapeUtil<TLTableShape> {
     return path;
   }
 
-  override onResize(shape: TLTableShape, info: TLResizeInfo<TLTableShape>) {
+  override onResize(_shape: TLTableShape, info: TLResizeInfo<TLTableShape>) {
     return {
       props: {
         w: Math.max(120, info.initialBounds.width * info.scaleX),
