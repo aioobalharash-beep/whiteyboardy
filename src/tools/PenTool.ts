@@ -248,7 +248,9 @@ class PenDrawing extends StateNode {
   }
 
   private discard() {
-    if (this.shapeId) this.editor.deleteShapes([this.shapeId]);
+    if (this.shapeId && this.editor.getShape(this.shapeId)) {
+      this.editor.deleteShapes([this.shapeId]);
+    }
     this.reset();
   }
 
