@@ -177,13 +177,15 @@ src/
 │   ├── ZoomHud.tsx          # bottom-right zoom & navigation HUD
 │   ├── ExportBar.tsx        # PNG/PDF toggle, whole board & section export
 │   ├── CropOverlay.tsx      # marquee section selection
+│   ├── LicenseNotice.tsx    # explains tldraw's production licence gate
 │   └── Toast.tsx            # transient status messages
 ├── shapes/
 │   └── TableShape.tsx       # `wb-table` custom shape (grid editing + SVG export)
 ├── tools/
 │   └── PenTool.ts           # `wb-pen` state node: click-to-anchor vector paths
 └── lib/
-    ├── storage.ts           # AppData persistence (+ localStorage fallback)
+    ├── storage.ts           # AppData persistence (verified backend + fallback)
+    ├── license.ts           # tldraw licence key + gate detection
     ├── export.ts            # PNG / PDF export pipeline
     ├── shapes.ts            # shape catalog, fill options, generated shapes
     ├── insert.ts            # image insertion from the device
