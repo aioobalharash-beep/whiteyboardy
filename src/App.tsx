@@ -886,15 +886,19 @@ export default function App() {
         <Tldraw
           hideUi
           autoFocus
+          licenseKey={TLDRAW_LICENSE_KEY}
           shapeUtils={tableShapeUtils}
           tools={penTools}
           onMount={(next) => {
-            setEditor(next);
+            setRawEditor(next);
+            diag("editor.mounted", { license: Boolean(TLDRAW_LICENSE_KEY) });
             if (import.meta.env.DEV) {
               (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
             }
           }}
         />
+
+        <LicenseNotice gated={licenseGated} missingKey={licenseKeyMissing} />
       </main>
 
       <ExportBar
