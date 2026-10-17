@@ -452,7 +452,14 @@ export default function App() {
         className="absolute inset-y-0 right-0 overflow-hidden transition-[left] duration-200 ease-out"
         style={{ left: sidebarOpen ? SIDEBAR_WIDTH : 0 }}
       >
-        <Tldraw hideUi autoFocus onMount={setEditor} />
+        <Tldraw
+          hideUi
+          autoFocus
+          onMount={(next) => {
+            setEditor(next);
+            (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
+          }}
+        />
       </main>
 
       <ExportBar
