@@ -755,7 +755,7 @@ export default function App() {
         });
         return;
       }
-      api.setActiveTool({ type: toolId });
+      api.setActiveTool({ type: toolId, locked: false });
     },
     [api],
   );
