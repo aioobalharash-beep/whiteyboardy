@@ -903,7 +903,7 @@ export default function App() {
       </main>
 
       <ExportBar
-        visible={!zenMode}
+        visible={!zenMode && !licenseGated}
         format={exportFormat}
         isExporting={isExporting}
         isCropping={isCropping}
