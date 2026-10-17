@@ -20,6 +20,7 @@ import { ToolDock, type DockToolId } from "./components/ToolDock";
 import { ZoomHud } from "./components/ZoomHud";
 import { EmptyBoardError, exportBoard, type ExportFormat } from "./lib/export";
 import { insertImagesFromDevice } from "./lib/insert";
+import { PEN_CUSTOM_TYPE, type PenStyle } from "./lib/pen";
 import {
   DEFAULT_COLOR,
   DEFAULT_FILL,
