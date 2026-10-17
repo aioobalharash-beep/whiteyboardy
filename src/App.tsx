@@ -916,6 +916,7 @@ export default function App() {
 
       <ToolDock
         visible={!zenMode}
+        disabled={!editor}
         activeToolId={activeToolId}
         shapeId={shapeId}
         color={strokeColor}
