@@ -158,6 +158,7 @@ export default function App() {
     (): PenStyle => ({
       strokeColor: colorHex(strokeColorRef.current),
       strokeWidth: strokeWidthFor(strokeSizeRef.current),
+      fillStyle: fillRef.current === "none" ? "solid" : fillRef.current,
       fillColor:
         fillRef.current === "none"
           ? null
