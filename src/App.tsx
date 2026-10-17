@@ -203,6 +203,7 @@ export default function App() {
             id: createBoardId(),
             name: "Untitled board",
             folderId: null,
+            pinned: false,
             updatedAt: Date.now(),
           };
           setBoards([board]);
