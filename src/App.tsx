@@ -806,6 +806,7 @@ export default function App() {
           hideUi
           autoFocus
           shapeUtils={tableShapeUtils}
+          tools={penTools}
           onMount={(next) => {
             setEditor(next);
             if (import.meta.env.DEV) {
