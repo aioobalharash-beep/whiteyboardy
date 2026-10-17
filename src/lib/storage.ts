@@ -7,6 +7,7 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { TLEditorSnapshot } from "tldraw";
+import { diag } from "./diagnostics";
 
 /**
  * Everything tldraw needs to restore a board: the serialized document plus the
@@ -46,18 +47,45 @@ export interface BoardLibrary {
  *     ├── board-<id>.json
  *     └── …
  *
- * When the app runs in a plain browser (`vite dev` preview) the same data is
- * mirrored into `localStorage` so the UI stays fully functional.
+ * When the app runs in a plain browser (`vite dev` preview) — or when the app
+ * data directory turns out to be unusable at runtime — the same data is kept in
+ * `localStorage` instead, so the board library is never lost.
  */
 const APP_DATA_DIR = BaseDirectory.AppData;
 const INDEX_FILE_NAME = "boards-index.json";
 const INDEX_STORAGE_KEY = "whiteyboardy.boards-index";
+
+/**
+ * If the app data directory itself cannot be created (a locked-down fs scope,
+ * for example), the files move into this sub directory, which is always inside
+ * the granted `$APPDATA/**` scope.
+ */
+const FALLBACK_DIR_NAME = "whiteyboardy";
+/** Written once to prove that the file backend really can write before we use it. */
+const PROBE_FILE_NAME = "whiteyboardy-storage-probe.json";
+/**
+ * A storage call that never settles would hang the whole library load, so every
+ * file operation is given a deadline and falls back to `localStorage` after it.
+ */
+const STORAGE_TIMEOUT_MS = 3000;
 
 /** Bumped whenever the on-disk shape of `boards-index.json` changes. */
 const LIBRARY_VERSION = 3;
 
 const boardFileName = (boardId: string) => `board-${boardId}.json`;
 const boardStorageKey = (boardId: string) => `whiteyboardy.board.${boardId}`;
+
+/** Where the board library is being persisted right now. */
+export type StorageBackend = "files" | "browser";
+
+/** The outcome of choosing a storage backend, for the UI to report. */
+export interface StorageReport {
+  backend: StorageBackend;
+  /** `""` for the app data directory itself, otherwise a sub directory of it. */
+  directory: string;
+  /** Why the file backend was rejected, if it was. */
+  error: string | null;
+}
 
 /** Whether we are running inside the Tauri webview rather than a browser tab. */
 export function isTauriRuntime(): boolean {
@@ -68,21 +96,101 @@ export function isTauriRuntime(): boolean {
   );
 }
 
-let appDataDirReady: Promise<void> | null = null;
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Rejects when `promise` has not settled within `STORAGE_TIMEOUT_MS`. */
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} did not respond within ${STORAGE_TIMEOUT_MS} ms`));
+    }, STORAGE_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(describeError(error)));
+      },
+    );
+  });
+}
+
+/** Prefixes a file name with the active storage directory. */
+function filePath(fileName: string): string {
+  return activeDirectory === "" ? fileName : `${activeDirectory}/${fileName}`;
+}
+
+let activeDirectory = "";
+let storageReport: StorageReport | null = null;
+let storageReportPromise: Promise<StorageReport> | null = null;
 
 /**
- * The app data directory is not created for us, so make sure it exists before
- * the first write. `"."` resolves to the directory itself and is covered by the
- * default `mkdir` scope for the application directories.
+ * Creates the app data directory and proves that it can be written to.
+ *
+ * The app data directory is not created for us by Tauri, and no storage
+ * permission check is trustworthy until a real byte has landed on disk, so this
+ * writes (and removes) a probe file. If anything fails — or simply never
+ * answers — the caller falls back to `localStorage`.
  */
-function ensureAppDataDir(): Promise<void> {
-  if (!isTauriRuntime()) return Promise.resolve();
-  if (!appDataDirReady) {
-    appDataDirReady = mkdir(".", { baseDir: APP_DATA_DIR, recursive: true }).catch(
-      () => undefined,
-    );
+async function probeFileBackend(): Promise<StorageReport> {
+  const candidates = ["", FALLBACK_DIR_NAME];
+  let error: string | null = null;
+
+  for (const directory of candidates) {
+    const base = directory === "" ? "." : directory;
+    const probe = directory === "" ? PROBE_FILE_NAME : `${directory}/${PROBE_FILE_NAME}`;
+
+    try {
+      await withTimeout(
+        mkdir(base, { baseDir: APP_DATA_DIR, recursive: true }),
+        `mkdir(${base})`,
+      );
+      await withTimeout(
+        writeTextFile(probe, "ok", { baseDir: APP_DATA_DIR }),
+        `writeTextFile(${probe})`,
+      );
+      await remove(probe, { baseDir: APP_DATA_DIR }).catch(() => {});
+      diag("storage.files-ok", { directory, base });
+      return { backend: "files", directory, error: null };
+    } catch (caught) {
+      error = `${base}: ${describeError(caught)}`;
+      diag("storage.files-failed", error);
+    }
   }
-  return appDataDirReady;
+
+  diag("storage.fallback-to-browser", error);
+  return { backend: "browser", directory: "", error };
+}
+
+/** Resolves (once) which backend this session writes to, and remembers it. */
+function resolveStorage(): Promise<StorageReport> {
+  if (!isTauriRuntime()) {
+    storageReport ??= { backend: "browser", directory: "", error: null };
+    return Promise.resolve(storageReport);
+  }
+
+  storageReportPromise ??= probeFileBackend().then((report) => {
+    storageReport = report;
+    activeDirectory = report.directory;
+    return report;
+  });
+
+  return storageReportPromise;
+}
+
+/**
+ * The storage backend in use, plus the reason the file backend was skipped.
+ *
+ * Reads wait for the backend probe, so this is safe to call as soon as the app
+ * has loaded.
+ */
+export function storageStatus(): Promise<StorageReport> {
+  return resolveStorage();
 }
 
 /** Stable, collision-free id for a new board or folder. */
@@ -137,19 +245,31 @@ function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry
 }
 
 async function readJson<T>(fileName: string, storageKey: string): Promise<T | null> {
-  if (!isTauriRuntime()) {
-    const raw = window.localStorage.getItem(storageKey);
-    return raw ? (JSON.parse(raw) as T) : null;
+  const { backend } = await resolveStorage();
+
+  if (backend === "browser") {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch (error) {
+      console.warn(`[storage] could not read ${storageKey}`, error);
+      return null;
+    }
   }
 
-  await ensureAppDataDir();
-
   try {
-    if (!(await exists(fileName, { baseDir: APP_DATA_DIR }))) return null;
-    const raw = await readTextFile(fileName, { baseDir: APP_DATA_DIR });
+    const path = filePath(fileName);
+    if (!(await withTimeout(exists(path, { baseDir: APP_DATA_DIR }), `exists(${path})`))) {
+      return null;
+    }
+    const raw = await withTimeout(
+      readTextFile(path, { baseDir: APP_DATA_DIR }),
+      `readTextFile(${path})`,
+    );
     return JSON.parse(raw) as T;
   } catch (error) {
     console.warn(`[storage] could not read ${fileName}`, error);
+    diag("storage.read-failed", `${fileName}: ${describeError(error)}`);
     return null;
   }
 }
@@ -160,30 +280,36 @@ async function writeJson(
   value: unknown,
 ): Promise<void> {
   const serialized = JSON.stringify(value, null, 2);
+  const { backend } = await resolveStorage();
 
-  if (!isTauriRuntime()) {
+  if (backend === "browser") {
     window.localStorage.setItem(storageKey, serialized);
     return;
   }
 
-  await ensureAppDataDir();
-  await writeTextFile(fileName, serialized, { baseDir: APP_DATA_DIR });
+  const path = filePath(fileName);
+  await withTimeout(
+    writeTextFile(path, serialized, { baseDir: APP_DATA_DIR }),
+    `writeTextFile(${path})`,
+  );
 }
 
 async function deleteFile(fileName: string, storageKey: string): Promise<void> {
-  if (!isTauriRuntime()) {
+  const { backend } = await resolveStorage();
+
+  if (backend === "browser") {
     window.localStorage.removeItem(storageKey);
     return;
   }
 
-  await ensureAppDataDir();
-
   try {
-    if (await exists(fileName, { baseDir: APP_DATA_DIR })) {
-      await remove(fileName, { baseDir: APP_DATA_DIR });
+    const path = filePath(fileName);
+    if (await withTimeout(exists(path, { baseDir: APP_DATA_DIR }), `exists(${path})`)) {
+      await withTimeout(remove(path, { baseDir: APP_DATA_DIR }), `remove(${path})`);
     }
   } catch (error) {
     console.warn(`[storage] could not delete ${fileName}`, error);
+    diag("storage.delete-failed", `${fileName}: ${describeError(error)}`);
   }
 }
 
