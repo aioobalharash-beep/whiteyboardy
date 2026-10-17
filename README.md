@@ -110,6 +110,10 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 - The tool avoids the trailing "rubber-band" point leaking into the saved shape:
   the pending point is dropped on finish, and anchors closer than ~3 px (for
   example from a finishing double-click) are merged.
+- History stays tidy: every anchor and rubber-band update is squashed into a
+  **single undo step**, so one `⌘Z` takes the whole path back, while an abandoned
+  path (Esc, or a stray single click) is removed with `bailToMark` and never
+  becomes an undo step.
 
 ### Images
 - **Add image** opens the native macOS open dialog, extends the file-system
