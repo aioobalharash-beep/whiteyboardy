@@ -39,6 +39,14 @@ export interface TableShapeProps {
 
 export type TLTableShape = TLBaseShape<typeof TABLE_SHAPE_TYPE, TableShapeProps>;
 
+// Register the custom shape with tldraw's type system so `TLShape`,
+// `ShapeUtil<TLTableShape>` and the store schema all know about it.
+declare module "@tldraw/tlschema" {
+  interface TLGlobalShapePropsMap {
+    [TABLE_SHAPE_TYPE]: TableShapeProps;
+  }
+}
+
 const DEFAULT_ROWS = 3;
 const DEFAULT_COLS = 4;
 const MIN_ROWS = 1;
