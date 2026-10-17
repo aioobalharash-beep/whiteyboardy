@@ -74,11 +74,16 @@ export function isEditorLicenseGated(): boolean {
 }
 
 /**
- * Tracks whether the editor is (or is about to be) hidden by tldraw's licence
+ * Tracks whether tldraw has *actually* hidden the editor behind its licence
  * gate, so the app can explain what happened instead of showing a dead canvas.
+ *
+ * This deliberately starts from the DOM marker rather than from
+ * {@link willEditorBeGated}: before the gate fires the editor is fully usable,
+ * and pretending otherwise would leave the canvas on screen while the app's own
+ * board loading and auto-save stayed inert.
  */
 export function useEditorLicenseGate(): boolean {
-  const [gated, setGated] = useState(willEditorBeGated);
+  const [gated, setGated] = useState(isEditorLicenseGated);
 
   useEffect(() => {
     if (gated) return;
