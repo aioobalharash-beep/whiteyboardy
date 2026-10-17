@@ -104,16 +104,21 @@ function isFolderEntry(value: unknown): value is FolderEntry {
   );
 }
 
-function isBoardIndexEntry(value: unknown): value is BoardIndexEntry {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<BoardIndexEntry>;
-  return typeof candidate.id === "string" && typeof candidate.name === "string";
-}
-
-/** Normalises a board entry, defaulting everything a legacy file may omit. */
+/**
+ * Normalises a board entry, defaulting everything a legacy (v1) file may omit
+ * and dropping any folder reference that no longer exists.
+ */
 function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry | null {
-  if (!isBoardIndexEntry(value)) return null;
-  const candidate = value as Partial<BoardIndexEntry>;
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as {
+    id?: unknown;
+    name?: unknown;
+    folderId?: unknown;
+    updatedAt?: unknown;
+  };
+  if (typeof candidate.id !== "string" || typeof candidate.name !== "string") {
+    return null;
+  }
   const folderId =
     typeof candidate.folderId === "string" && folderIds.has(candidate.folderId)
       ? candidate.folderId
@@ -122,7 +127,8 @@ function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry
     id: candidate.id,
     name: candidate.name,
     folderId,
-    updatedAt: typeof candidate.updatedAt === "number" ? candidate.updatedAt : Date.now(),
+    updatedAt:
+      typeof candidate.updatedAt === "number" ? candidate.updatedAt : Date.now(),
   };
 }
 
