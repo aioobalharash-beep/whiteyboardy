@@ -193,8 +193,9 @@ export function penElementSkeleton(
     points: local.map((point) => [point.x, point.y] as [number, number]),
     strokeColor: style.strokeColor,
     // Only a closed path can be filled, and an open one must not hide its start.
-    backgroundColor: closed && style.fillColor ? style.fillColor : "transparent",
-    fillStyle: "solid",
+    backgroundColor:
+      closed && style.fillColor ? style.fillColor : "transparent",
+    fillStyle: style.fillStyle,
     strokeWidth: style.strokeWidth,
     strokeStyle: "solid",
     // Clean lines, like every other shape the app draws.
