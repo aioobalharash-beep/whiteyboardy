@@ -111,7 +111,7 @@ async function confirmDestructive(
 }
 
 export default function App() {
-  const [editor, setEditor] = useState<Editor | null>(null);
+  const [rawEditor, setRawEditor] = useState<Editor | null>(null);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [boards, setBoards] = useState<BoardIndexEntry[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
@@ -128,6 +128,16 @@ export default function App() {
   const [isCropping, setIsCropping] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+
+  /**
+   * A production build without a tldraw licence key loses its editor to
+   * tldraw's licence gate a few seconds after launch. Treat that as "no editor"
+   * so every tool, HUD and handler fails softly instead of writing to a canvas
+   * that no longer exists.
+   */
+  const licenseGated = useEditorLicenseGate();
+  const licenseKeyMissing = licenseKeyMissingInProduction();
+  const editor = licenseGated ? null : rawEditor;
 
   const activeBoardIdRef = useRef<string | null>(null);
   /** Board ids that still exist in the library; snapshots are never written for others. */
