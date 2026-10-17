@@ -442,6 +442,7 @@ export default function App() {
         id: createBoardId(),
         name: `Board ${boards.length + 1}`,
         folderId,
+        pinned: false,
         updatedAt: Date.now(),
       };
       setBoards((previous) => [...previous, board]);
