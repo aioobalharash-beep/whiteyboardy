@@ -99,5 +99,65 @@ Full parity is the remaining Phases 2–3.
 4. **Bundle size** grows by ~1.5–2 MB minified.
 5. **Stored boards**: the format changes. Nothing ever persisted successfully in a
    packaged build before today, and the dev-harness test boards are cleared, so
-   there is nothing to migrate; old tldraw snapshot files would be ignored (or a
-   one-off converter written if you have boards you care about).
+   there is nothing to migrate; old tldraw snapshot files are copied to
+   `board-<id>.legacy-tldraw.json` when opened, so they are never destroyed, and
+   a one-off converter could still be written against those copies.
+
+---
+
+## Status after Phases 0–1 (implemented)
+
+**Phase 0 — dependency swap.** `tldraw` and `@tldraw/tlschema` are gone;
+`@excalidraw/excalidraw@0.18.1` (MIT) is in. `license.ts`, `LicenseNotice.tsx`,
+`PenTool.ts`, `TableShape.tsx`, `.env.example` and the env plumbing are deleted,
+along with the `opener:default` permission and the `tauri-plugin-opener`
+dependency that only existed for the licence notice. Verified: the production
+bundle contains no licence gate — the only `license` strings in the shipped JS are
+Excalidraw's "publish library" copy and a font-metadata field.
+
+**Phase 1 — working canvas.** `App.tsx` mounts an uncontrolled
+`<Excalidraw key={boardId} initialData={…} handleKeyboardGlobally />`, and:
+- the dock drives `setActiveTool` / `updateScene`, and follows the editor back
+  (tool, stroke colour, width and fill all sync from `onChange`, so keyboard
+  shortcuts and element selection update the dock);
+- shapes are Excalidraw's native rectangle/ellipse/diamond tools plus generated
+  closed `line` elements (first point repeated so `isPathALoop` fills them), all
+  with `roughness: 0`;
+- autosave is a 500 ms debounce that fires only when the document changes, with
+  the scene serialized synchronously before the first `await`, a captured board id
+  and a live-board check, plus a forced save on every board switch and on
+  `beforeunload`/`visibilitychange`;
+- the canvas only ever mounts with data tagged for the on-screen board, so a
+  board's first change notification can never be written into its successor;
+- `lib/scene.ts` writes the file itself: Excalidraw's scene plus the camera and
+  pen style that Excalidraw's own `serializeAsJSON` deliberately drops
+  (`cleanAppStateForExport` keeps neither), so a board reopens where you left it.
+  Legacy/foreign files are backed up rather than overwritten;
+- the zoom HUD polls the API (200 ms) and recomputes `scrollX/scrollY` so zooming
+  holds the viewport centre;
+- Excalidraw's chrome (`.App-menu_top`, `.App-toolbar-container`,
+  `.layer-ui__wrapper__footer`, `.layer-ui__wrapper__top-right`,
+  `.welcome-screen-center`, …) is hidden with CSS scoped to `.wb-canvas`. Nothing
+  in the engine is patched.
+
+**Verified in the dev harness** (browser, `localStorage` backend): canvas mounts
+and stays live; dock → tool sync both ways; style changes apply to the next shape
+*and* to a selection; the shape catalogue places closed loops that really fill
+(read back pixel-for-pixel from the static canvas); zoom HUD reads and changes the
+zoom around the viewport centre; board creation, switching, per-board autosave,
+reload-with-camera-and-style and delete all work; a seeded legacy tldraw board is
+copied to `…legacy-tldraw` before its file is replaced.
+
+### Still owed by Phase 2
+
+1. **Pen tool** (anchor points, straight/smooth, point editing) as an Excalidraw
+   custom tool (`{ type: "custom", customType }` + `onPointerDown`/`onPointerUp`).
+   Excalidraw's own **Line** tool is in the dock as the interim.
+2. **Tables** — composed from grouped rectangles plus container-bound text, with
+   the add/remove row/col controls.
+3. **Remaining shape work**: richer cloud/x-box/check-box compositions if wanted.
+4. **Section-export polish** — the crop is currently a raster crop of a 2× board
+   export (exact, but the region's background outside the board relies on
+   `exportBackground`).
+5. Optional: flush pending autosaves on window close (today up to ~500 ms of edits
+   can be lost if the process is killed mid-debounce).
