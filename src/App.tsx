@@ -555,7 +555,7 @@ export default function App() {
         if (next) setActiveBoardId(next.id);
       }
     },
-    [boards],
+    [boards, settleTransientTool],
   );
 
   // --- Folder actions -----------------------------------------------------
