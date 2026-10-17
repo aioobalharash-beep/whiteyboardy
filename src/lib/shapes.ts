@@ -103,6 +103,32 @@ export function normalise(points: Point[]): {
   return { points: shifted, width, height };
 }
 
+/**
+ * Moves a point cloud's origin onto its **first** point.
+ *
+ * Excalidraw requires a linear element's points to start at `[0, 0]`, with the
+ * element's `x`/`y` sitting on that first point: its point editor logs an error
+ * for elements that do not, and re-writes them in that form the next time the
+ * board is loaded. Every shape — generated or drawn with the pen — is written
+ * already normalised so what is on screen is what the engine expects.
+ *
+ * `origin` is the top-left of the element's bounding box on the board.
+ */
+export function rebaseOnFirstPoint(
+  points: Point[],
+  origin: Point,
+): { x: number; y: number; points: Point[] } {
+  const first = points[0] ?? { x: 0, y: 0 };
+  return {
+    x: origin.x + first.x,
+    y: origin.y + first.y,
+    points: points.map((point) => ({
+      x: point.x - first.x,
+      y: point.y - first.y,
+    })),
+  };
+}
+
 /** A flat-bottomed semicircle that fills a box `size` wide and `size/2` tall. */
 function halfCircle(size: number): Point[] {
   const radius = size / 2;
