@@ -524,7 +524,11 @@ export default function App() {
       ) {
         event.preventDefault();
         event.stopPropagation();
-        api?.setActiveTool({ type: "custom", customType: PEN_CUSTOM_TYPE });
+        api?.setActiveTool({
+          type: "custom",
+          customType: PEN_CUSTOM_TYPE,
+          locked: true,
+        });
         return;
       }
 
