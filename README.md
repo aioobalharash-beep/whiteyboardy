@@ -178,6 +178,54 @@ npm run tauri build    # bundled .app / .dmg
 No licence key, environment file or build flag is required for development or
 production.
 
+## Building and installing
+
+`npm run tauri build` writes two artefacts:
+
+- `src-tauri/target/release/bundle/macos/WhiteyBoardy.app`
+- `src-tauri/target/release/bundle/dmg/WhiteyBoardy_0.1.0_aarch64.dmg`
+
+The build is **Apple Silicon only** (`arm64`) and **ad-hoc signed** —
+`"signingIdentity": "-"` in `src-tauri/tauri.conf.json`. Ad-hoc signing matters:
+without it the bundle keeps the linker's incomplete signature (the executable is
+link-signed, then Tauri adds the icon and `Info.plist`), `codesign --verify` fails
+with *"code has no resources but signature indicates they must be present"*, and
+macOS calls a copied app damaged. It is deliberately **not notarized**, so a copy
+that has been through the internet is quarantined and needs whitelisting once
+(see below). macOS 10.15 or later is required.
+
+To install on this machine: open the `.dmg` and drag **WhiteyBoardy** onto the
+*Applications* shortcut, then launch it from Applications.
+
+On a Mac that did not build the app (AirDrop, download, USB stick, cloud drive)
+the first launch is blocked by Gatekeeper:
+
+1. try to open the app and dismiss the warning;
+2. open **System Settings → Privacy & Security**, scroll to *Security*, click
+   **Open Anyway** next to WhiteyBoardy, confirm, then open the app again.
+
+Or drop the quarantine flag from Terminal instead of using the settings pane:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/WhiteyBoardy.app
+```
+
+Boards live per user in `~/Library/Application Support/com.whiteyboardy.app/`
+(`boards-index.json` plus one `board-<id>.json` per board), so copying that folder
+is all it takes to move boards to another Mac — the app writes it on first launch.
+
+For an Intel Mac the plain build will not run; build for the other architecture
+(or both at once, using the `universal-apple-darwin` target):
+
+```bash
+rustup target add x86_64-apple-darwin
+npm run tauri build -- --target x86_64-apple-darwin
+```
+
+Installing with no whitelist prompt at all needs an Apple Developer ID: set
+`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` and the
+same build signs and notarizes itself.
+
 ## Project layout
 
 ```
