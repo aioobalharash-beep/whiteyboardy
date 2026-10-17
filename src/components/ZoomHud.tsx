@@ -43,7 +43,7 @@ export function ZoomHud({ visible, editor }: ZoomHudProps) {
     <div className="wb-animate-in fixed right-4 bottom-4 z-30 flex items-center gap-0.5 rounded-2xl border border-neutral-200/80 bg-white/85 p-1.5 shadow-lg shadow-neutral-900/5 backdrop-blur-xl">
       <button
         type="button"
-        onClick={() => editor.zoomOut(editor.getViewportScreenCenter(), ZOOM_ANIMATION)}
+        onClick={() => editor.zoomOut()}
         title="Zoom out"
         aria-label="Zoom out"
         className={buttonClass}
@@ -53,7 +53,7 @@ export function ZoomHud({ visible, editor }: ZoomHudProps) {
 
       <button
         type="button"
-        onClick={() => editor.resetZoom(editor.getViewportScreenCenter(), ZOOM_ANIMATION)}
+        onClick={() => editor.resetZoom()}
         title="Reset zoom to 100%"
         aria-label="Reset zoom to 100%"
         className="flex h-7 min-w-[52px] items-center justify-center rounded-lg px-1 text-[12px] font-medium tabular-nums text-neutral-700 transition-colors hover:bg-neutral-900/5 hover:text-neutral-900"
@@ -63,7 +63,7 @@ export function ZoomHud({ visible, editor }: ZoomHudProps) {
 
       <button
         type="button"
-        onClick={() => editor.zoomIn(editor.getViewportScreenCenter(), ZOOM_ANIMATION)}
+        onClick={() => editor.zoomIn()}
         title="Zoom in"
         aria-label="Zoom in"
         className={buttonClass}
@@ -75,7 +75,7 @@ export function ZoomHud({ visible, editor }: ZoomHudProps) {
 
       <button
         type="button"
-        onClick={() => editor.zoomToFit(ZOOM_ANIMATION)}
+        onClick={() => editor.zoomToFit()}
         title="Zoom to fit everything on this board"
         aria-label="Zoom to fit"
         className={buttonClass}
@@ -86,7 +86,7 @@ export function ZoomHud({ visible, editor }: ZoomHudProps) {
       <button
         type="button"
         disabled={selectionCount === 0}
-        onClick={() => editor.zoomToSelection(ZOOM_ANIMATION)}
+        onClick={() => editor.zoomToSelection()}
         title="Zoom to the current selection"
         aria-label="Zoom to selection"
         className={buttonClass}
