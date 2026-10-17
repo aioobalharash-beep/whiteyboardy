@@ -665,7 +665,7 @@ export default function App() {
 
       if (selectedIds.size === 0) {
         api.updateScene({
-          appState: appStatePatch,
+          appState: partialAppState(appStatePatch),
           captureUpdate: CaptureUpdateAction.NEVER,
         });
         return;
@@ -679,7 +679,7 @@ export default function App() {
               ? ({ ...element, ...elementPatch } as ExcalidrawElement)
               : element,
           ),
-        appState: appStatePatch,
+        appState: partialAppState(appStatePatch),
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
       });
     },
