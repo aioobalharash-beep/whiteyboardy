@@ -37,7 +37,8 @@ export interface ExportRequest {
 
 export type ExportOutcome =
   | { status: "saved"; fileName: string; filePath: string }
-  | { status: "downloaded"; fileName: string };
+  | { status: "downloaded"; fileName: string }
+  | { status: "cancelled" };
 
 /** Thrown when the current board has nothing to rasterize. */
 export class EmptyBoardError extends Error {
