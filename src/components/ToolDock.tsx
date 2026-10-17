@@ -25,14 +25,17 @@ import { SHAPE_CATALOG, findShapeOption, type ShapeOption } from "../lib/shapes"
 /**
  * The tools the dock drives through Excalidraw's `setActiveTool`.
  *
- * Tools that need extra arguments (`image`, custom tools) are driven by the
- * dock's own handlers instead, so they are not part of this union.
+ * "pen" is the app's own tool: it registers with Excalidraw as a custom tool,
+ * which is why it is not part of Excalidraw's `ToolType`. Tools that need extra
+ * arguments (`image`) are driven by the dock's own handlers instead, so they are
+ * not part of this union either.
  */
-export type DockToolId = Exclude<ToolType, "image">;
+export type DockToolId = Exclude<ToolType, "image"> | "pen";
 
 const SELECT_TOOL: DockToolId = "selection";
 const FREEDRAW_TOOL: DockToolId = "freedraw";
 const LINE_TOOL: DockToolId = "line";
+const PEN_TOOL: DockToolId = "pen";
 const ERASER_TOOL: DockToolId = "eraser";
 const ARROW_TOOL: DockToolId = "arrow";
 const TEXT_TOOL: DockToolId = "text";
