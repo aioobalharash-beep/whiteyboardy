@@ -34,7 +34,7 @@ function zoomAroundCentre(api: ExcalidrawImperativeAPI, nextZoom: number): void 
 
   api.updateScene({
     appState: {
-      zoom: { value },
+      zoom: { value } as AppState["zoom"],
       scrollX: width / 2 - centreX * value,
       scrollY: height / 2 - centreY * value,
     },
