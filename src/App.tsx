@@ -45,6 +45,7 @@ import {
   loadLibrary,
   saveBoardSnapshot,
   saveLibrary,
+  storageStatus,
   type BoardIndexEntry,
   type BoardSnapshot,
   type FolderEntry,
