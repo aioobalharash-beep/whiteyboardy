@@ -1,9 +1,10 @@
 import {
-  BaseBoxShapeUtil,
   DefaultColorStyle,
   DefaultFillStyle,
   DefaultSizeStyle,
   HTMLContainer,
+  Rectangle2d,
+  ShapeUtil,
   T,
   createShapeId,
   getColorValue,
@@ -15,6 +16,7 @@ import {
   type TLDefaultColorStyle,
   type TLDefaultFillStyle,
   type TLDefaultSizeStyle,
+  type TLResizeInfo,
   type TLShapeId,
   type VecModel,
 } from "tldraw";
