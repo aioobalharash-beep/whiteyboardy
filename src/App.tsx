@@ -19,7 +19,6 @@ import { LicenseNotice } from "./components/LicenseNotice";
 import { Toast, type Notice } from "./components/Toast";
 import { ToolDock } from "./components/ToolDock";
 import { ZoomHud } from "./components/ZoomHud";
-import { diag } from "./lib/diagnostics";
 import {
   EmptyBoardError,
   exportBoard,
