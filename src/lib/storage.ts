@@ -1,13 +1,11 @@
 import {
   BaseDirectory,
   exists,
-  mkdir,
   readTextFile,
   remove,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { TLEditorSnapshot } from "tldraw";
-import { diag } from "./diagnostics";
 
 /**
  * Everything tldraw needs to restore a board: the serialized document plus the
@@ -133,11 +131,9 @@ async function probeFileBackend(): Promise<StorageReport> {
       `writeTextFile(${PROBE_FILE_NAME})`,
     );
     await remove(PROBE_FILE_NAME, { baseDir: APP_DATA_DIR }).catch(() => {});
-    diag("storage.files-ok");
     return { backend: "files", error: null };
   } catch (caught) {
     const error = describeError(caught);
-    diag("storage.files-failed", error);
     return { backend: "browser", error };
   }
 }
@@ -242,7 +238,6 @@ async function readJson<T>(fileName: string, storageKey: string): Promise<T | nu
     return JSON.parse(raw) as T;
   } catch (error) {
     console.warn(`[storage] could not read ${fileName}`, error);
-    diag("storage.read-failed", `${fileName}: ${describeError(error)}`);
     return null;
   }
 }
@@ -280,7 +275,6 @@ async function deleteFile(fileName: string, storageKey: string): Promise<void> {
     }
   } catch (error) {
     console.warn(`[storage] could not delete ${fileName}`, error);
-    diag("storage.delete-failed", `${fileName}: ${describeError(error)}`);
   }
 }
 
