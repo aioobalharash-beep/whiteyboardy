@@ -1,33 +1,27 @@
 /**
  * TEMPORARY VERIFICATION HELPER — DELETE BEFORE SHIPPING.
  *
- * Creates one shape shortly after launch and records what happened to a file in
- * the app data directory, so the packaged app's editor → autosave → file path
- * can be checked from outside the window.
+ * Creates one shape shortly after launch and records what it can observe to a
+ * file in the app data directory. The board snapshot itself must then appear as
+ * `board-<active board id>.json`, written by the app's own auto-save, so a second
+ * run proves that a board written by one launch is loaded by the next.
  */
 import { BaseDirectory, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Editor } from "tldraw";
 import { createShapeId, getSnapshot } from "tldraw";
-import { isTauriRuntime, saveBoardSnapshot } from "./storage";
+import { isTauriRuntime } from "./storage";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function report(payload: Record<string, unknown>): Promise<void> {
-  try {
-    await writeTextFile("selftest-report.json", JSON.stringify(payload, null, 2), {
-      baseDir: BaseDirectory.AppData,
-    });
-  } catch {
-    // nothing we can do from a verification helper
-  }
-}
 
 export async function runSelfTest(editor: Editor): Promise<void> {
   if (!isTauriRuntime()) return;
 
   await sleep(2500);
 
-  const report: Record<string, unknown> = {};
+  const payload: Record<string, unknown> = {
+    shapesOnLoad: [...editor.getCurrentPageShapeIds()].length,
+  };
+
   try {
     editor.createShape({
       id: createShapeId(),
@@ -36,24 +30,23 @@ export async function runSelfTest(editor: Editor): Promise<void> {
       y: 120,
       props: { geo: "rectangle", w: 260, h: 180 },
     });
-    report.created = true;
-    report.liveShapes = [...editor.getCurrentPageShapeIds()].length;
+    payload.created = true;
+    payload.shapesAfterCreate = [...editor.getCurrentPageShapeIds()].length;
   } catch (error) {
-    report.createError = String(error);
+    payload.createError = String(error);
   }
 
-  // Give the app's own debounced autosave (500 ms) time to run.
+  // Give the app's own debounced auto-save (500 ms) time to run.
   await sleep(2000);
-  report.indexAfterAutosave = window.localStorage.getItem("whiteyboardy.boards-index");
+
+  payload.snapshotRecords = Object.keys(getSnapshot(editor.store).document.store).length;
+  payload.browserStorageIndex = window.localStorage.getItem("whiteyboardy.boards-index");
 
   try {
-    const snapshot = getSnapshot(editor.store);
-    report.snapshotRecords = Object.keys(snapshot.document.store).length;
-    await saveBoardSnapshot("selftest-board", snapshot);
-    report.saveOk = true;
-  } catch (error) {
-    report.saveError = String(error);
+    await writeTextFile("selftest-report.json", JSON.stringify(payload, null, 2), {
+      baseDir: BaseDirectory.AppData,
+    });
+  } catch {
+    // nothing we can do from a verification helper
   }
-
-  await report(report);
 }
