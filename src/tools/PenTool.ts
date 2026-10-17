@@ -241,6 +241,9 @@ class PenDrawing extends StateNode {
       type: "line",
       props: { spline: penConfig.spline },
     });
+    // Selecting here (rather than after the mark below) keeps the selection in
+    // the same history entry as the path, so one undo also clears it.
+    if (select) this.editor.setSelectedShapes([shapeId]);
 
     // Fold every anchor and rubber-band change into one undo step, so a single
     // undo takes the whole path back instead of nibbling off one point.
@@ -249,7 +252,6 @@ class PenDrawing extends StateNode {
     this.editor.markHistoryStoppingPoint("wb-pen");
     this.reset();
 
-    if (select) this.editor.setSelectedShapes([shapeId]);
     if (exit) this.editor.setCurrentTool("select");
   }
 
