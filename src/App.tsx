@@ -1,41 +1,51 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import {
   Box,
   DefaultColorStyle,
+  DefaultFillStyle,
   DefaultSizeStyle,
   GeoShapeGeoStyle,
   getSnapshot,
   loadSnapshot,
   Tldraw,
   type Editor,
+  type TLDefaultFillStyle,
 } from "tldraw";
 import { BoardSidebar } from "./components/BoardSidebar";
 import { CropOverlay, type ScreenRect } from "./components/CropOverlay";
 import { ExportBar } from "./components/ExportBar";
 import { Toast, type Notice } from "./components/Toast";
 import { ToolDock } from "./components/ToolDock";
+import { ZoomHud } from "./components/ZoomHud";
 import {
   EmptyBoardError,
   exportBoard,
   type ExportFormat,
 } from "./lib/export";
+import { insertImagesFromDevice } from "./lib/insert";
 import type { BoardColorName, BoardSizeName } from "./lib/palette";
+import { findShapeOption, insertGeneratedShape } from "./lib/shapes";
+import { insertTable, tableShapeUtils } from "./shapes/TableShape";
 import {
   createBoardId,
+  createFolderId,
   deleteBoardSnapshot,
-  loadBoardIndex,
+  isTauriRuntime,
   loadBoardSnapshot,
-  saveBoardIndex,
+  loadLibrary,
   saveBoardSnapshot,
+  saveLibrary,
   type BoardIndexEntry,
   type BoardSnapshot,
+  type FolderEntry,
 } from "./lib/storage";
 
 /** Width of the collapsible sidebar, mirrored by the canvas inset. */
 const SIDEBAR_WIDTH = 256;
 /** Debounce window for writing a board snapshot to disk. */
 const AUTOSAVE_DELAY_MS = 500;
-/** Debounce window for writing the board index to disk. */
+/** Debounce window for writing the board library to disk. */
 const INDEX_SAVE_DELAY_MS = 300;
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -56,16 +66,40 @@ function resetBoard(editor: Editor): void {
   editor.setCamera({ x: 0, y: 0, z: 1 });
 }
 
+/** Asks the user to confirm a destructive action, natively when possible. */
+async function confirmDestructive(
+  title: string,
+  message: string,
+  okLabel: string,
+): Promise<boolean> {
+  if (isTauriRuntime()) {
+    try {
+      return await confirmDialog(message, {
+        title,
+        kind: "warning",
+        okLabel,
+        cancelLabel: "Cancel",
+      });
+    } catch (error) {
+      console.warn("[whiteyboardy] native confirm unavailable", error);
+    }
+  }
+  return window.confirm(message);
+}
+
 export default function App() {
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [boards, setBoards] = useState<BoardIndexEntry[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
-  const [indexLoaded, setIndexLoaded] = useState(false);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [zenMode, setZenMode] = useState(false);
   const [activeToolId, setActiveToolId] = useState("select");
+  const [shapeId, setShapeId] = useState("rectangle");
   const [strokeColor, setStrokeColor] = useState<BoardColorName>("black");
   const [strokeSize, setStrokeSize] = useState<BoardSizeName>("m");
+  const [fill, setFill] = useState<TLDefaultFillStyle>("none");
   const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
   const [isCropping, setIsCropping] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -104,35 +138,54 @@ export default function App() {
     [],
   );
 
-  // Keep a ref in sync so the autosave listener (registered once per editor)
-  // always writes to the board that is currently on screen.
+  // Keep a ref in sync so the autosave listener always writes to the board that
+  // is currently on screen.
   useEffect(() => {
     activeBoardIdRef.current = activeBoardId;
   }, [activeBoardId]);
 
-  // --- Initial board index ------------------------------------------------
+  // --- Initial board library ---------------------------------------------
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
-        let index = await loadBoardIndex();
-        if (index.length === 0) {
-          index = [{ id: createBoardId(), name: "Untitled board", updatedAt: Date.now() }];
-          await saveBoardIndex(index);
-        }
+        const library = await loadLibrary();
         if (cancelled) return;
 
-        const mostRecent = [...index].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-        setBoards(index);
+        if (library.boards.length === 0) {
+          const board: BoardIndexEntry = {
+            id: createBoardId(),
+            name: "Untitled board",
+            folderId: null,
+            updatedAt: Date.now(),
+          };
+          setFolders(library.folders);
+          setBoards([board]);
+          setActiveBoardId(board.id);
+          return;
+        }
+
+        setFolders(library.folders);
+        setBoards(library.boards);
+        const mostRecent = [...library.boards].sort(
+          (a, b) => b.updatedAt - a.updatedAt,
+        )[0];
         setActiveBoardId(mostRecent.id);
       } catch (error) {
-        console.error("[whiteyboardy] could not load the board index", error);
+        console.error("[whiteyboardy] could not load the board library", error);
         if (!cancelled) {
-          setBoards([{ id: createBoardId(), name: "Untitled board", updatedAt: Date.now() }]);
+          const board: BoardIndexEntry = {
+            id: createBoardId(),
+            name: "Untitled board",
+            folderId: null,
+            updatedAt: Date.now(),
+          };
+          setBoards([board]);
+          setActiveBoardId(board.id);
         }
       } finally {
-        if (!cancelled) setIndexLoaded(true);
+        if (!cancelled) setLibraryLoaded(true);
       }
     })();
 
@@ -141,16 +194,49 @@ export default function App() {
     };
   }, []);
 
-  // --- Persist the board index -------------------------------------------
+  // --- Persist the board library -----------------------------------------
   useEffect(() => {
-    if (!indexLoaded) return;
+    if (!libraryLoaded) return;
     const timer = window.setTimeout(() => {
-      void saveBoardIndex(boards).catch((error) =>
-        console.error("[whiteyboardy] could not save the board index", error),
+      void saveLibrary({ folders, boards }).catch((error) =>
+        console.error("[whiteyboardy] could not save the board library", error),
       );
     }, INDEX_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [boards, indexLoaded]);
+  }, [folders, boards, libraryLoaded]);
+
+  /**
+   * Snapshots the canvas *synchronously* and writes it to `boardId`.
+   *
+   * Capturing the snapshot before the first `await` is what makes this safe to
+   * call from a board switch: it always reflects the outgoing board's state,
+   * even if the change listener has not fired yet.
+   */
+  const writeBoardSnapshot = useCallback(
+    async (boardId: string) => {
+      if (!editor) return;
+
+      let snapshot: BoardSnapshot;
+      try {
+        snapshot = getSnapshot(editor.store);
+      } catch (error) {
+        console.error("[whiteyboardy] could not snapshot the board", error);
+        return;
+      }
+
+      try {
+        await saveBoardSnapshot(boardId, snapshot);
+        setBoards((previous) =>
+          previous.map((board) =>
+            board.id === boardId ? { ...board, updatedAt: Date.now() } : board,
+          ),
+        );
+      } catch (error) {
+        console.error("[whiteyboardy] could not save the board", error);
+      }
+    },
+    [editor],
+  );
 
   // --- Debounced autosave of the active board ----------------------------
   useEffect(() => {
@@ -162,24 +248,7 @@ export default function App() {
       timer = null;
       const boardId = activeBoardIdRef.current;
       if (!boardId) return;
-
-      let snapshot: BoardSnapshot;
-      try {
-        snapshot = getSnapshot(editor.store);
-      } catch (error) {
-        console.error("[whiteyboardy] could not snapshot the board", error);
-        return;
-      }
-
-      void saveBoardSnapshot(boardId, snapshot)
-        .then(() =>
-          setBoards((previous) =>
-            previous.map((board) =>
-              board.id === boardId ? { ...board, updatedAt: Date.now() } : board,
-            ),
-          ),
-        )
-        .catch((error) => console.error("[whiteyboardy] autosave failed", error));
+      void writeBoardSnapshot(boardId);
     };
 
     const flush = () => {
@@ -213,11 +282,29 @@ export default function App() {
       cancel();
       autosaveRef.current = { flush: () => {}, cancel: () => {} };
     };
-  }, [editor]);
+  }, [editor, writeBoardSnapshot]);
+
+  /**
+   * Saves the board currently on screen right now, ignoring the debounce.
+   *
+   * This does not depend on a pending timer existing: board switches must never
+   * lose edits that the store listener has not yet reported.
+   */
+  const saveActiveBoardNow = useCallback(async () => {
+    const boardId = activeBoardIdRef.current;
+    if (!boardId) return;
+    autosaveRef.current.cancel();
+    await writeBoardSnapshot(boardId);
+  }, [writeBoardSnapshot]);
 
   // --- Load the active board into the canvas -----------------------------
   useEffect(() => {
     if (!editor || !activeBoardId) return;
+
+    // Drop anything the previous board left pending so it can never be written
+    // into the board we are about to open.
+    autosaveRef.current.cancel();
+
     let cancelled = false;
 
     void (async () => {
@@ -229,6 +316,8 @@ export default function App() {
         } else {
           resetBoard(editor);
         }
+        // The load itself is a document change; ignore it for autosave purposes.
+        autosaveRef.current.cancel();
       } catch (error) {
         console.error("[whiteyboardy] could not open the board", error);
         if (!cancelled) showNotice({ kind: "error", text: "Could not open that board." });
@@ -239,6 +328,22 @@ export default function App() {
       cancelled = true;
     };
   }, [editor, activeBoardId, showNotice]);
+
+  // --- Best-effort save when the window goes away ------------------------
+  useEffect(() => {
+    const persist = () => {
+      void saveActiveBoardNow();
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) persist();
+    };
+    window.addEventListener("beforeunload", persist);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", persist);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [saveActiveBoardNow]);
 
   // --- Mirror the editor's active tool into the dock ---------------------
   useEffect(() => {
@@ -258,7 +363,7 @@ export default function App() {
         return;
       }
 
-      // Never steal keys from the inline board-rename input.
+      // Never steal keys from the inline rename inputs or table cells.
       if (isTypingTarget(event.target)) return;
 
       if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -281,23 +386,30 @@ export default function App() {
   }, [isCropping]);
 
   // --- Board actions ------------------------------------------------------
-  const handleCreateBoard = useCallback(() => {
-    autosaveRef.current.flush();
-    const board: BoardIndexEntry = {
-      id: createBoardId(),
-      name: `Board ${boards.length + 1}`,
-      updatedAt: Date.now(),
-    };
-    setBoards((previous) => [...previous, board]);
-    setActiveBoardId(board.id);
-  }, [boards.length]);
+  const handleCreateBoard = useCallback(
+    async (folderId: string | null) => {
+      await saveActiveBoardNow();
+      const board: BoardIndexEntry = {
+        id: createBoardId(),
+        name: `Board ${boards.length + 1}`,
+        folderId,
+        updatedAt: Date.now(),
+      };
+      setBoards((previous) => [...previous, board]);
+      setActiveBoardId(board.id);
+    },
+    [boards.length, saveActiveBoardNow],
+  );
 
-  const handleSelectBoard = useCallback((boardId: string) => {
-    if (boardId === activeBoardIdRef.current) return;
-    // Make sure the board we are leaving is on disk before we swap the canvas.
-    autosaveRef.current.flush();
-    setActiveBoardId(boardId);
-  }, []);
+  const handleSelectBoard = useCallback(
+    async (boardId: string) => {
+      if (boardId === activeBoardIdRef.current) return;
+      // Make sure the board we are leaving is on disk before we swap the canvas.
+      await saveActiveBoardNow();
+      setActiveBoardId(boardId);
+    },
+    [saveActiveBoardNow],
+  );
 
   const handleRenameBoard = useCallback((boardId: string, name: string) => {
     const trimmed = name.trim();
@@ -307,14 +419,28 @@ export default function App() {
     );
   }, []);
 
+  const handleMoveBoard = useCallback((boardId: string, folderId: string | null) => {
+    setBoards((previous) =>
+      previous.map((board) => (board.id === boardId ? { ...board, folderId } : board)),
+    );
+  }, []);
+
   const handleDeleteBoard = useCallback(
-    (boardId: string) => {
+    async (boardId: string) => {
       if (boards.length <= 1) return;
+
+      const board = boards.find((entry) => entry.id === boardId);
+      const confirmed = await confirmDestructive(
+        "Delete board",
+        `Are you sure you want to delete “${board?.name ?? "this board"}”? This cannot be undone.`,
+        "Delete",
+      );
+      if (!confirmed) return;
 
       const isActiveBoard = boardId === activeBoardIdRef.current;
       if (isActiveBoard) autosaveRef.current.cancel();
 
-      const remaining = boards.filter((board) => board.id !== boardId);
+      const remaining = boards.filter((entry) => entry.id !== boardId);
       setBoards(remaining);
 
       void deleteBoardSnapshot(boardId).catch((error) =>
@@ -323,24 +449,99 @@ export default function App() {
 
       if (isActiveBoard) {
         const next = [...remaining].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-        setActiveBoardId(next.id);
+        if (next) setActiveBoardId(next.id);
       }
     },
     [boards],
   );
 
-  // --- Tools, colour and thickness ---------------------------------------
+  // --- Folder actions -----------------------------------------------------
+  const handleCreateFolder = useCallback(
+    (moveBoardId?: string) => {
+      const folder: FolderEntry = {
+        id: createFolderId(),
+        name: "New folder",
+        createdAt: Date.now(),
+      };
+      setFolders((previous) => [...previous, folder]);
+      if (moveBoardId) handleMoveBoard(moveBoardId, folder.id);
+    },
+    [handleMoveBoard],
+  );
+
+  const handleRenameFolder = useCallback((folderId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setFolders((previous) =>
+      previous.map((folder) => (folder.id === folderId ? { ...folder, name: trimmed } : folder)),
+    );
+  }, []);
+
+  const handleDeleteFolder = useCallback(
+    async (folderId: string) => {
+      const folder = folders.find((entry) => entry.id === folderId);
+      const count = boards.filter((board) => board.folderId === folderId).length;
+
+      if (count > 0) {
+        const confirmed = await confirmDestructive(
+          "Delete folder",
+          `Delete the folder “${folder?.name ?? "this folder"}”? Its ${count} ${
+            count === 1 ? "board" : "boards"
+          } will be kept and moved out of the folder.`,
+          "Delete folder",
+        );
+        if (!confirmed) return;
+      }
+
+      setFolders((previous) => previous.filter((entry) => entry.id !== folderId));
+      setBoards((previous) =>
+        previous.map((board) =>
+          board.folderId === folderId ? { ...board, folderId: null } : board,
+        ),
+      );
+    },
+    [folders, boards],
+  );
+
+  // --- Tools, colour, thickness and fill ---------------------------------
   const handleSelectTool = useCallback(
     (toolId: string) => {
       if (!editor) return;
-      if (toolId === "geo") {
-        editor.setStyleForNextShapes(GeoShapeGeoStyle, "rectangle");
-      }
       editor.setCurrentTool(toolId);
       // Keep keyboard shortcuts alive after clicking our own chrome.
       editor.focus();
     },
     [editor],
+  );
+
+  const styleForNewShapes = useMemo(
+    () => ({ color: strokeColor, fill, size: strokeSize }),
+    [strokeColor, fill, strokeSize],
+  );
+
+  const handleSelectShape = useCallback(
+    (nextShapeId: string) => {
+      setShapeId(nextShapeId);
+      if (!editor) return;
+
+      const option = findShapeOption(nextShapeId);
+      if (option.geo) {
+        // Built-in geo shapes: arm tldraw's own tool so you drag out the size.
+        editor.setStyleForNextShapes(GeoShapeGeoStyle, option.geo);
+        editor.setCurrentTool("geo");
+      } else {
+        // Generated shapes have no tldraw tool, so place them at the viewport
+        // centre and select them, ready to move and resize.
+        insertGeneratedShape(
+          editor,
+          option,
+          styleForNewShapes,
+          editor.getViewportPageBounds().center,
+        );
+      }
+      editor.focus();
+    },
+    [editor, styleForNewShapes],
   );
 
   const handleSelectColor = useCallback(
@@ -366,6 +567,41 @@ export default function App() {
     },
     [editor],
   );
+
+  const handleSelectFill = useCallback(
+    (nextFill: TLDefaultFillStyle) => {
+      setFill(nextFill);
+      if (!editor) return;
+      editor.setStyleForNextShapes(DefaultFillStyle, nextFill);
+      if (editor.getSelectedShapeIds().length > 0) {
+        editor.setStyleForSelectedShapes(DefaultFillStyle, nextFill);
+      }
+    },
+    [editor],
+  );
+
+  // --- Insert image / table ----------------------------------------------
+  const handleInsertImage = useCallback(async () => {
+    if (!editor) return;
+    try {
+      const count = await insertImagesFromDevice(editor);
+      if (count > 0) {
+        showNotice({
+          kind: "info",
+          text: `Added ${count} image${count === 1 ? "" : "s"}.`,
+        });
+      }
+    } catch (error) {
+      console.error("[whiteyboardy] could not add images", error);
+      showNotice({ kind: "error", text: "Could not add that image." });
+    }
+  }, [editor, showNotice]);
+
+  const handleInsertTable = useCallback(() => {
+    if (!editor) return;
+    insertTable(editor, editor.getViewportPageBounds().center, styleForNewShapes);
+    editor.focus();
+  }, [editor, styleForNewShapes]);
 
   // --- Export -------------------------------------------------------------
   const runExport = useCallback(
@@ -437,15 +673,20 @@ export default function App() {
       <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-40 h-8" />
 
       <BoardSidebar
+        folders={folders}
         boards={boards}
         activeBoardId={activeBoardId}
         open={sidebarOpen}
         width={SIDEBAR_WIDTH}
         onToggle={() => setSidebarOpen((open) => !open)}
         onSelect={handleSelectBoard}
-        onCreate={handleCreateBoard}
-        onRename={handleRenameBoard}
-        onDelete={handleDeleteBoard}
+        onCreateBoard={handleCreateBoard}
+        onRenameBoard={handleRenameBoard}
+        onDeleteBoard={handleDeleteBoard}
+        onMoveBoard={handleMoveBoard}
+        onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
+        onDeleteFolder={handleDeleteFolder}
       />
 
       <main
@@ -455,9 +696,12 @@ export default function App() {
         <Tldraw
           hideUi
           autoFocus
+          shapeUtils={tableShapeUtils}
           onMount={(next) => {
             setEditor(next);
-            (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
+            if (import.meta.env.DEV) {
+              (window as unknown as { __wbEditor?: Editor }).__wbEditor = next;
+            }
           }}
         />
       </main>
@@ -473,14 +717,22 @@ export default function App() {
         onCancelSection={() => setIsCropping(false)}
       />
 
+      <ZoomHud visible={!zenMode} editor={editor} />
+
       <ToolDock
         visible={!zenMode}
         activeToolId={activeToolId}
+        shapeId={shapeId}
         color={strokeColor}
         size={strokeSize}
+        fill={fill}
         onSelectTool={handleSelectTool}
+        onSelectShape={handleSelectShape}
         onSelectColor={handleSelectColor}
         onSelectSize={handleSelectSize}
+        onSelectFill={handleSelectFill}
+        onInsertImage={handleInsertImage}
+        onInsertTable={handleInsertTable}
         onToggle={() => setZenMode((zen) => !zen)}
       />
 
@@ -488,7 +740,7 @@ export default function App() {
 
       {notice && <Toast notice={notice} />}
 
-      {!indexLoaded && (
+      {!libraryLoaded && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
           <span className="text-[12px] font-medium text-neutral-400">
             Loading your boards…
