@@ -31,8 +31,8 @@ function openPricing() {
  * have nothing to act on. This surfaces the real reason, before and after the
  * canvas is taken away.
  */
-export function LicenseNotice({ gated, missingKey }: LicenseNoticeProps) {
-  if (!gated && !missingKey) return null;
+export function LicenseNotice({ gated, willGate }: LicenseNoticeProps) {
+  if (!gated && !willGate) return null;
 
   if (!gated) {
     return (
