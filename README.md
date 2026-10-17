@@ -65,11 +65,13 @@ Every board lives on your Mac — nothing is uploaded anywhere.
 - **Collapsible sidebar** with `pt-10` breathing room for the traffic lights.
   Toggle with the header button or **`⌘ + \`**; a small floating button at the
   top-left reopens it.
-- **Collapsible bottom tool dock** driving the tldraw `Editor`: Select, Pen
-  (freehand), Eraser, Arrow and Text, plus a shape picker, a stroke
-  colour/thickness/fill popover, image & table insertion, and the Zen toggle.
-  Toggle it (Zen mode) with the eye button or **`Tab`** for a 100 % unobstructed
-  canvas.
+- **Collapsible bottom tool dock** driving the tldraw `Editor`: Select, Pencil
+  (freehand), Pen (lines), Eraser, Arrow and Text, plus a shape picker, a stroke
+  colour/thickness/fill popover, pen options, image & table insertion, and the
+  Zen toggle. Single-key shortcuts (`V`, `D`, `P`, `E`, `A`, `T`) are routed by
+  the app, because hiding tldraw's UI also hides tldraw's shortcut registry.
+  Toggle the dock (Zen mode) with the eye button or **`Tab`** for a 100 %
+  unobstructed canvas.
 - **Zoom HUD** in the bottom-right corner: zoom out, a live zoom percentage that
   resets to 100 %, zoom in, **fit everything on the board**, and **jump to the
   current selection**. Hidden in Zen mode like the rest of the chrome.
