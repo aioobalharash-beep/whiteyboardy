@@ -107,8 +107,8 @@ function isFolderEntry(value: unknown): value is FolderEntry {
 }
 
 /**
- * Normalises a board entry, defaulting everything a legacy (v1) file may omit
- * and dropping any folder reference that no longer exists.
+ * Normalises a board entry, defaulting everything a legacy (v1 or v2) file may
+ * omit and dropping any folder reference that no longer exists.
  */
 function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry | null {
   if (typeof value !== "object" || value === null) return null;
@@ -116,6 +116,7 @@ function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry
     id?: unknown;
     name?: unknown;
     folderId?: unknown;
+    pinned?: unknown;
     updatedAt?: unknown;
   };
   if (typeof candidate.id !== "string" || typeof candidate.name !== "string") {
@@ -129,6 +130,7 @@ function normaliseBoard(value: unknown, folderIds: Set<string>): BoardIndexEntry
     id: candidate.id,
     name: candidate.name,
     folderId,
+    pinned: candidate.pinned === true,
     updatedAt:
       typeof candidate.updatedAt === "number" ? candidate.updatedAt : Date.now(),
   };
