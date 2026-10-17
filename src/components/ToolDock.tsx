@@ -54,6 +54,12 @@ interface DockTool {
 const DOCK_TOOLS: DockTool[] = [
   { id: SELECT_TOOL, label: "Select", shortcut: "V", icon: MousePointer2 },
   { id: FREEDRAW_TOOL, label: "Pencil (freehand)", shortcut: "P", icon: Pencil },
+  {
+    id: PEN_TOOL,
+    label: "Pen (anchors, curves, closable paths)",
+    shortcut: "N",
+    icon: PenToolIcon,
+  },
   { id: LINE_TOOL, label: "Line (click to add points)", shortcut: "L", icon: PenLine },
   { id: ERASER_TOOL, label: "Eraser", shortcut: "E", icon: Eraser },
   { id: ARROW_TOOL, label: "Arrow", shortcut: "A", icon: ArrowUpRight },
