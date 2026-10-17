@@ -12,6 +12,7 @@ import {
   type BoardFillName,
   type BoardSizeName,
 } from "./palette";
+import { createId } from "./storage";
 
 /**
  * The shapes offered in the tool dock.
