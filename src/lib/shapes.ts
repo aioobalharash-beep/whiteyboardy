@@ -443,11 +443,17 @@ function outlineElement(
   centre: Point,
   fill: boolean,
 ): ExcalidrawElementSkeleton {
-  const { points, width, height } = normalise(closeLoop(loop));
-  return {
-    type: "line",
+  const { points: local, width, height } = normalise(closeLoop(loop));
+  // Centre the bounding box on `centre`, then move the element's origin onto its
+  // first point, which is where Excalidraw expects a linear element to start.
+  const { x, y, points } = rebaseOnFirstPoint(local, {
     x: centre.x - width / 2,
     y: centre.y - height / 2,
+  });
+  return {
+    type: "line",
+    x,
+    y,
     width,
     height,
     points: points.map((point) => [point.x, point.y] as [number, number]),
