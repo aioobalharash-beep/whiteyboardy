@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import type {
   ActiveTool,
