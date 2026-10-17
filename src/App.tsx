@@ -876,7 +876,7 @@ export default function App() {
         style={{ left: sidebarOpen ? SIDEBAR_WIDTH : 0 }}
       >
         <div className="wb-canvas absolute inset-0">
-          {canvasReady && (
+          {loadedBoard && loadedBoard.boardId === activeBoardId && (
             <Excalidraw
               key={loadedBoard.boardId}
               initialData={loadedBoard.data}
