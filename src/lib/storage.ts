@@ -260,10 +260,9 @@ async function writeJson(
     return;
   }
 
-  const path = filePath(fileName);
   await withTimeout(
-    writeTextFile(path, serialized, { baseDir: APP_DATA_DIR }),
-    `writeTextFile(${path})`,
+    writeTextFile(fileName, serialized, { baseDir: APP_DATA_DIR }),
+    `writeTextFile(${fileName})`,
   );
 }
 
