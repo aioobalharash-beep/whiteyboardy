@@ -162,7 +162,7 @@ src/
 ├── main.tsx                 # React entry point
 ├── styles.css               # Tailwind v4 + tldraw + base macOS surface
 ├── components/
-│   ├── BoardSidebar.tsx     # folders + boards (create / rename / delete / move)
+│   ├── BoardSidebar.tsx     # folders, pinning + drag-and-drop board organisation
 │   ├── ToolDock.tsx         # tools, shape picker, colour/thickness/fill, insert
 │   ├── ZoomHud.tsx          # bottom-right zoom & navigation HUD
 │   ├── ExportBar.tsx        # PNG/PDF toggle, whole board & section export
@@ -170,6 +170,8 @@ src/
 │   └── Toast.tsx            # transient status messages
 ├── shapes/
 │   └── TableShape.tsx       # `wb-table` custom shape (grid editing + SVG export)
+├── tools/
+│   └── PenTool.ts           # `wb-pen` state node: click-to-anchor vector paths
 └── lib/
     ├── storage.ts           # AppData persistence (+ localStorage fallback)
     ├── export.ts            # PNG / PDF export pipeline
