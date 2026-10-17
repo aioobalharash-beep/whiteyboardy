@@ -232,13 +232,12 @@ async function readJson<T>(fileName: string, storageKey: string): Promise<T | nu
   }
 
   try {
-    const path = filePath(fileName);
-    if (!(await withTimeout(exists(path, { baseDir: APP_DATA_DIR }), `exists(${path})`))) {
+    if (!(await withTimeout(exists(fileName, { baseDir: APP_DATA_DIR }), `exists(${fileName})`))) {
       return null;
     }
     const raw = await withTimeout(
-      readTextFile(path, { baseDir: APP_DATA_DIR }),
-      `readTextFile(${path})`,
+      readTextFile(fileName, { baseDir: APP_DATA_DIR }),
+      `readTextFile(${fileName})`,
     );
     return JSON.parse(raw) as T;
   } catch (error) {
