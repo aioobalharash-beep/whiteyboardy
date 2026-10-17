@@ -51,12 +51,14 @@ interface ToolDockProps {
   color: BoardColorName;
   size: BoardSizeName;
   fill: TLDefaultFillStyle;
+  penSpline: PenSpline;
   disabled?: boolean;
   onSelectTool: (toolId: string) => void;
   onSelectShape: (shapeId: string) => void;
   onSelectColor: (color: BoardColorName) => void;
   onSelectSize: (size: BoardSizeName) => void;
   onSelectFill: (fill: TLDefaultFillStyle) => void;
+  onSelectPenSpline: (spline: PenSpline) => void;
   onInsertImage: () => void;
   onInsertTable: () => void;
   onToggle: () => void;
