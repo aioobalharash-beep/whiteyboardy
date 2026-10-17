@@ -275,9 +275,8 @@ async function deleteFile(fileName: string, storageKey: string): Promise<void> {
   }
 
   try {
-    const path = filePath(fileName);
-    if (await withTimeout(exists(path, { baseDir: APP_DATA_DIR }), `exists(${path})`)) {
-      await withTimeout(remove(path, { baseDir: APP_DATA_DIR }), `remove(${path})`);
+    if (await withTimeout(exists(fileName, { baseDir: APP_DATA_DIR }), `exists(${fileName})`)) {
+      await withTimeout(remove(fileName, { baseDir: APP_DATA_DIR }), `remove(${fileName})`);
     }
   } catch (error) {
     console.warn(`[storage] could not delete ${fileName}`, error);
